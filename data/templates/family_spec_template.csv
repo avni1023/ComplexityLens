@@ -1,0 +1,5 @@
+family_id,name,canonical_label,category,pattern,unknown_reason,derivation,variant_count,reviewer,agreement
+FAM_001,Linear single loop scan,O(n),determinable_easy,single_linear_loop,,Single for-loop increments from 0 to n doing O(1) work per iteration,5,,
+FAM_002,Binary search loop,O(log n),determinable_easy,logarithmic_loop,,Loop halves range window (high - low) on each iteration with O(1) work,5,,
+FAM_003,Nested quadratic pair check,O(n^2),determinable_easy,nested_loops,,Outer loop runs n times and inner loop runs n times,5,,
+FAM_004,Collatz step loop,UNKNOWN,unknown_benchmark,unresolved_bound,NON_OBVIOUS_TERMINATION,Loop termination depends on unproven Collatz 3n+1 conjecture step count,5,,

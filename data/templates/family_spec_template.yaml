@@ -1,0 +1,28 @@
+# ComplexityLens Family Specification Template (YAML format)
+# Used to author program families with independent rationale before running the engine.
+
+family_id: "FAM_001"
+name: "Linear single loop scan"
+canonical_label: "O(n)" # One of: O(1), O(log n), O(n), O(n log n), O(n^2), O(n^3), O(2^n), UNKNOWN
+category: "determinable_easy" # determinable_easy, rule_hard, or unknown_benchmark
+pattern: "single_linear_loop"
+unknown_reason: null # One of: DATA_DEPENDENT_BOUND, NON_OBVIOUS_TERMINATION, UNSUPPORTED_CONSTRUCT, UNKNOWN_EXTERNAL_CALL, IRREGULAR_RECURSION, or null
+derivation: "Single for-loop increments index from 0 to n by 1 doing O(1) constant work per iteration."
+variants_planned:
+  - id: "FAM_001_v1"
+    mutation_type: "seed"
+    description: "Standard for loop over array elements"
+  - id: "FAM_001_v2"
+    mutation_type: "for_to_while"
+    description: "While loop equivalent with counter increment"
+  - id: "FAM_001_v3"
+    mutation_type: "renamed_vars"
+    description: "Identifiers renamed with descriptive variable names"
+  - id: "FAM_001_v4"
+    mutation_type: "helper_function"
+    description: "Loop encapsulated in a non-recursive helper function"
+  - id: "FAM_001_v5"
+    mutation_type: "step_constant"
+    description: "Step increment changed to i += 2 (still linear)"
+reviewer: ""
+reviewer_agreement: null
