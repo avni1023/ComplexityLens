@@ -8,8 +8,10 @@ and unsupported constructs.
 Public Surface:
     - build_ir(parse_result) -> ProgramIR
     - ProgramIR, FunctionIR, LoopIR, CallIR, STLOperationIR, UnsupportedIR
+    - IRDiagnostic
     - LoopBound, LoopUpdate, SourceSpan
     - BoundKind, UpdateKind, LoopKind, STLOperationKind, UnsupportedKind
+    - DiagnosticSeverity
 """
 
 from __future__ import annotations
@@ -22,7 +24,9 @@ from complexity_lens.ir.builder import (
 from complexity_lens.ir.model import (
     BoundKind,
     CallIR,
+    DiagnosticSeverity,
     FunctionIR,
+    IRDiagnostic,
     LoopBound,
     LoopIR,
     LoopKind,
@@ -39,7 +43,9 @@ from complexity_lens.ir.model import (
 __all__ = [
     "BoundKind",
     "CallIR",
+    "DiagnosticSeverity",
     "FunctionIR",
+    "IRDiagnostic",
     "LoopBound",
     "LoopIR",
     "LoopKind",

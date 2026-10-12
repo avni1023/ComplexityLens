@@ -6,6 +6,34 @@ it into the typed ComplexityLens IR (ProgramIR, FunctionIR, LoopIR, CallIR,
 STLOperationIR, UnsupportedIR).
 
 Parsing is kept strictly separate from IR construction.
+
+All parser calls are centralized through ``parse_file`` / ``parse_source`` in
+``complexity_lens.parsers.cpp_libclang``.  No subprocess is launched; libclang
+runs in-process.  Process isolation and configurable timeouts are future
+hardening planned for the API milestone and are not implemented here.
+
+Input validation
+----------------
+``build_ir_from_source`` accepts only ``str``.  Call
+``complexity_lens.validation.validate_source(source)`` before invoking it when
+accepting untrusted input; the validation check is *not* repeated here to avoid
+double-rejection and to keep the parser boundary clean.
+
+Container-type provenance
+-------------------------
+``STLOperationIR.container_kind_source`` is set to:
+
+* ``"resolved"``    — when libclang resolves the declaration type of the
+  container (currently not implemented; reserved for future semantic analysis).
+* ``"source_text"`` — when the container name is inferred from token / spelling
+  source text (best-effort; default for all Day-2/3 detections).
+* ``None``          — when no container could be determined.
+
+Fatal failures
+--------------
+A fatal parse failure never produces a misleading, valid-looking empty IR.
+``ProgramIR.has_syntax_errors`` is set to ``True`` and
+``ProgramIR.analysis_complete`` is set to ``False``.
 """
 
 from __future__ import annotations
@@ -17,6 +45,7 @@ from complexity_lens.ir.model import (
     BoundKind,
     CallIR,
     FunctionIR,
+    IRDiagnostic,
     LoopBound,
     LoopIR,
     LoopKind,
@@ -342,6 +371,7 @@ def _analyze_call(
             container=container,
             arguments=[c.spelling for c in call_node.children if c.spelling],
             span=span,
+            container_kind_source="source_text" if container else None,
         )
 
     # 2. Container member methods: push_back, insert, erase
@@ -358,6 +388,7 @@ def _analyze_call(
             container=container,
             arguments=[c.spelling for c in call_node.children if c.spelling],
             span=span,
+            container_kind_source="source_text" if container else None,
         )
 
     # 3. Recursion check
@@ -468,6 +499,34 @@ def _build_body_items(
                     if first_ref:
                         loop_var = first_ref.spelling
 
+            elif loop_kind == LoopKind.DO_WHILE:
+                c_list = child.children
+                if len(c_list) >= 2:
+                    body_node, cond_node = c_list[0], c_list[1]
+                elif len(c_list) == 1:
+                    body_node = c_list[0]
+
+                # Guess loop variable from condition
+                if cond_node:
+                    first_ref = next(
+                        (n for n in cond_node.all_nodes() if n.kind == "DECL_REF_EXPR"),
+                        None,
+                    )
+                    if first_ref:
+                        loop_var = first_ref.spelling
+
+            elif loop_kind == LoopKind.RANGE_FOR:
+                c_list = child.children
+                # Range-for: [range_decl, range_init, body]
+                if len(c_list) >= 2:
+                    body_node = c_list[-1]
+                    var_decl = next(
+                        (n for n in c_list[0].all_nodes() if n.kind == "VAR_DECL"),
+                        None,
+                    )
+                    if var_decl:
+                        loop_var = var_decl.spelling
+
             # Extract bound and update
             bound = _extract_loop_bound(cond_node, loop_var, outer_vars, ctx.param_names)
             update = _extract_loop_update(update_node, loop_var, body_node)
@@ -537,24 +596,63 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
     Separates parsing completely from IR construction: consumes AST nodes and
     diagnostics, identifies user functions, loop nests, recursion sites,
     and unsupported constructs.
-    """
-    program = ProgramIR(
-        source_path=parse_result.source_path,
-        has_syntax_errors=parse_result.has_fatal_error,
-        diagnostics=[
-            d.message
-            for d in parse_result.diagnostics
-            if d.severity in ("error", "fatal")
-        ],
-    )
 
+    A fatal parsing failure never produces a misleading, valid-looking empty IR:
+    ``has_syntax_errors`` is set to ``True`` and ``analysis_complete`` to
+    ``False``.
+    """
     source_stem = Path(parse_result.source_path).name
 
+    # ------------------------------------------------------------------
+    # Convert raw parser diagnostics to IRDiagnostic objects
+    # ------------------------------------------------------------------
+    user_diags = [
+        d
+        for d in parse_result.diagnostics
+        if (
+            not d.loc
+            or not d.loc.file
+            or d.loc.file in (parse_result.source_path, "<string>.cpp")
+            or Path(d.loc.file).name == source_stem
+        )
+    ]
+
+    ir_diagnostics: list[IRDiagnostic] = []
+    for d in user_diags:
+        span = None
+        if d.loc:
+            span = SourceSpan(
+                file=d.loc.file or parse_result.source_path,
+                start_line=d.loc.line,
+                start_col=d.loc.col,
+                end_line=d.loc.line,
+                end_col=d.loc.col,
+            )
+        ir_diagnostics.append(IRDiagnostic(severity=d.severity, message=d.message, span=span))
+
+    has_syntax_errors = parse_result.has_fatal_error or any(
+        d.is_error() for d in ir_diagnostics
+    )
+
+    program = ProgramIR(
+        source_path=parse_result.source_path,
+        has_syntax_errors=has_syntax_errors,
+        diagnostics=ir_diagnostics,
+        analysis_complete=True,  # will be set False below if needed
+    )
+
+    # ------------------------------------------------------------------
+    # Error diagnostics make the analysis incomplete
+    # ------------------------------------------------------------------
+    if has_syntax_errors:
+        program.analysis_complete = False
+
+    # ------------------------------------------------------------------
     # Identify user-defined functions belonging to the source file
+    # ------------------------------------------------------------------
     user_functions: list[ASTNode] = []
     for func in parse_result.functions():
         loc_file = func.loc.file
-        # Ignore functions from standard headers
         is_src = (
             loc_file in (parse_result.source_path, "<string>.cpp")
             or Path(loc_file).name == source_stem
@@ -565,7 +663,9 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
             if has_body or not func.children:
                 user_functions.append(func)
 
+    # ------------------------------------------------------------------
     # Process each user function
+    # ------------------------------------------------------------------
     func_counter = 0
     for f_node in user_functions:
         func_counter += 1
@@ -611,39 +711,37 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
         )
         program.functions.append(function_ir)
 
-    user_diags = [
-        d
-        for d in parse_result.diagnostics
-        if (
-            not d.loc
-            or not d.loc.file
-            or d.loc.file in (parse_result.source_path, "<string>.cpp")
-            or Path(d.loc.file).name == source_stem
-        )
-    ]
-    has_syntax_errors = parse_result.has_fatal_error or any(
-        d.severity in ("error", "fatal") for d in user_diags
-    )
-    if has_syntax_errors:
-        program.has_syntax_errors = True
-        for diag in user_diags:
-            if diag.severity in ("error", "fatal"):
-                span = SourceSpan(
-                    file=parse_result.source_path,
-                    start_line=diag.loc.line if diag.loc else 1,
-                    start_col=diag.loc.col if diag.loc else 1,
-                    end_line=diag.loc.line if diag.loc else 1,
-                    end_col=diag.loc.col if diag.loc else 1,
+        # Any UnsupportedIR node anywhere makes analysis incomplete
+        if not program.analysis_complete:
+            pass  # already False
+        elif function_ir.all_unsupported():
+            program.analysis_complete = False
+
+    # ------------------------------------------------------------------
+    # Populate top-level syntax-error UnsupportedIR nodes
+    # ------------------------------------------------------------------
+    for diag in ir_diagnostics:
+        if diag.is_error():
+            span = diag.span or SourceSpan(
+                file=parse_result.source_path,
+                start_line=1,
+                start_col=1,
+                end_line=1,
+                end_col=1,
+            )
+            program.unsupported_constructs.append(
+                UnsupportedIR(
+                    id=f"syntax_error_{len(program.unsupported_constructs) + 1}",
+                    kind=UnsupportedKind.UNKNOWN_SYNTAX,
+                    raw_spelling=diag.message,
+                    reason=f"Parser syntax error: {diag.message}",
+                    span=span,
                 )
-                program.unsupported_constructs.append(
-                    UnsupportedIR(
-                        id=f"syntax_error_{len(program.unsupported_constructs) + 1}",
-                        kind=UnsupportedKind.UNKNOWN_SYNTAX,
-                        raw_spelling=diag.message,
-                        reason=f"Parser syntax error: {diag.message}",
-                        span=span,
-                    )
-                )
+            )
+
+    # Any top-level unsupported constructs also make analysis incomplete
+    if program.unsupported_constructs and program.analysis_complete:
+        program.analysis_complete = False
 
     return program
 
@@ -663,7 +761,14 @@ def build_ir_from_source(
     filename: str = "<string>.cpp",
     extra_args: list[str] | None = None,
 ) -> ProgramIR:
-    """Convenience: parse in-memory C++ source string and build ProgramIR."""
+    """Convenience: parse in-memory C++ source string and build ProgramIR.
+
+    Parameters
+    ----------
+    source:
+        Must be a ``str``.  Call ``validate_source(source)`` before this
+        function when accepting untrusted input.
+    """
     from complexity_lens.parsers.cpp_libclang import parse_source
 
     return build_ir(parse_source(source, filename=filename, extra_args=extra_args))
