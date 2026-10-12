@@ -11,6 +11,21 @@ if (-not (Test-Path $VenvPython)) {
     exit 1
 }
 
+if (-not $env:CXX_INCLUDE_DIRS) {
+    $userVal = [System.Environment]::GetEnvironmentVariable('CXX_INCLUDE_DIRS', 'User')
+    if ($userVal) {
+        $env:CXX_INCLUDE_DIRS = $userVal
+    } elseif (Test-Path 'C:\msys64\ucrt64\include\c++\16.2.0') {
+        $env:CXX_INCLUDE_DIRS = @(
+            'C:\msys64\ucrt64\include\c++\16.2.0',
+            'C:\msys64\ucrt64\include\c++\16.2.0\x86_64-w64-mingw32',
+            'C:\msys64\ucrt64\include',
+            'C:\msys64\ucrt64\lib\gcc\x86_64-w64-mingw32\16.2.0\include',
+            'C:\msys64\ucrt64\lib\gcc\x86_64-w64-mingw32\16.2.0\include-fixed'
+        ) -join ';'
+    }
+}
+
 Write-Host "==> Running ruff lint check..." -ForegroundColor Cyan
 & $VenvRuff check .
 if ($LASTEXITCODE -ne 0) {
