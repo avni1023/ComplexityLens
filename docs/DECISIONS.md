@@ -223,3 +223,124 @@ Implement the typed IR under package `src/complexity_lens/ir/`:
 - Total test suite expanded to **84 tests**:
   - `.\run_checks.ps1`: **84 passed, 0 skipped, 0 failed** in ~71s.
 - `ruff` checks 100% clean.
+
+---
+
+## ADR-004: Complete IR, Input Validation, and Directive Safety (Day 3)
+
+* **Date**: 2026-10-13
+* **Status**: Accepted
+
+### Context
+
+ComplexityLens must accept user-submitted C++ source safely before it is ever
+forwarded to the libclang parser.  Two classes of risk must be mitigated:
+
+1. **Malicious or pathological input**: oversized files, unbounded nesting,
+   embedded NUL bytes, non-text types, or invalid UTF-8 can crash the parser or
+   produce misleading IR silently.
+2. **Dangerous preprocessor directives**: `#pragma`, `#include_next`, `#embed`,
+   `__has_include`, quoted includes, or non-whitelisted headers could pull in
+   unexpected code or expose system state.
+
+The IR also lacked structured diagnostics; `ProgramIR.diagnostics` was `list[str]`
+and there was no `analysis_complete` flag, making downstream consumers unable to
+distinguish "clean IR" from "IR with suppressed errors".
+
+### Decisions
+
+#### Input Validation (`src/complexity_lens/validation.py`)
+
+A single `validate_source(source)` function runs **before any parser call**.
+Rules enforced:
+
+| Rule | Limit |
+|------|-------|
+| Type | `str` only; `bytes` / other types rejected |
+| Non-empty | Empty or whitespace-only source rejected |
+| NUL chars | `\0` always rejected |
+| UTF-8 | Upstream decode must use `errors="strict"` |
+| Source size | ≤ 20,480 UTF-8 bytes |
+| Line count | ≤ 200 (inclusive) |
+| Line length | ≤ 1,000 chars (excl. terminator) |
+| Brace depth | ≤ 50 (braces in comments/strings/chars ignored) |
+
+The brace-depth scanner uses a character-level state machine — not a regex —
+to correctly ignore braces inside line comments, block comments, string
+literals, and character literals.
+
+No input is silently truncated.  `ValidationError` is raised on any violation,
+with a 1-based `line` attribute when applicable.
+
+#### Include / Directive Safety
+
+A documented whitelist (`ALLOWED_HEADERS`) of standard C++ header names
+(bare names only, no paths) is enforced at the directive level.
+
+Rejected:
+- `#include "…"` (quoted includes)
+- `#include <path/to/header.h>` (path-style)
+- `#include_next`, `#embed`, `#pragma`
+- `__has_include` anywhere in source text
+
+Behaviour on rejection: `ValidationError` is raised; the parser is never
+called.  Source-line mapping is preserved for compliant input.
+
+The whitelist is checked line-by-line before parsing and is compatible with
+all Day-1/Day-2 fixtures.
+
+#### Structured IR Diagnostics (`IRDiagnostic`)
+
+`ProgramIR.diagnostics` is now `list[IRDiagnostic]` instead of `list[str]`.
+Each `IRDiagnostic` carries:
+- `severity: str` — `"note" | "warning" | "error" | "fatal"`
+- `message: str`
+- `span: SourceSpan | None`
+- `.is_error() -> bool` — True for `"error"` or `"fatal"` severity
+
+#### `analysis_complete` Flag
+
+`ProgramIR.analysis_complete: bool` is introduced.
+
+- `True` — no known completeness failures during IR construction.
+- Set to `False` by any error/fatal diagnostic **or** any `UnsupportedIR` node.
+- Warning-only diagnostics do **not** set it to `False`.
+- Fatal parse failures never produce a misleading empty-looking IR.
+- Serialization (`to_dict()`) and `pretty_print()` always include this field.
+
+`analysis_complete = True` does **not** guarantee mathematical exactness of
+future complexity predictions.
+
+#### Container-Type Provenance (`container_kind_source`)
+
+`STLOperationIR.container_kind_source: str | None` records inference method:
+
+- `"source_text"` — inferred from token/spelling; best-effort, Day 3 default.
+- `"resolved"` — reserved for future semantic resolution; not yet set.
+- `None` — container could not be determined.
+
+Source-text inferences must never be presented as resolved semantic facts.
+
+#### Parser Isolation
+
+All parser calls pass through `parse_file` / `parse_source` in
+`complexity_lens.parsers.cpp_libclang`.  No other module calls libclang
+directly.  libclang runs **in-process** — no subprocess is spawned.
+Submitted C++ is **never compiled or executed**.  Process isolation and
+timeouts are planned for the API milestone.
+
+#### DO_WHILE and RANGE_FOR
+
+The IR builder now handles `do { … } while (cond)` and `for (auto x : c) { … }`
+loop kinds in `_build_body_items`.  Range-for bounds are classified `UNKNOWN`
+because the range expression is not a traditional bound.
+
+### Consequences
+
+- All validation failures raise before the parser is invoked (tested with mocks).
+- Directive whitelist is compatible with all 12 Day-1/Day-2 fixture files.
+- Downstream consumers can rely on `analysis_complete` and structured
+  `IRDiagnostic` objects.
+- Container-type provenance prevents future code from treating best-effort
+  inferences as resolved semantic facts.
+

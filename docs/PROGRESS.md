@@ -8,9 +8,23 @@
   - `pyproject.toml`, `.gitignore`, `Makefile`, `run_checks.ps1`
   - Family specification templates (YAML & CSV)
   - Clean test run passing (2/2 smoke tests green)
-- [ ] **Day 1: Parser Spike (time-boxed)**
-- [ ] **Day 2: Minimal IR**
-- [ ] **Day 3: Complete IR & Safe Input Handling**
+- [x] **Day 1: Parser Spike (time-boxed)**
+  - 12 C++ fixtures covering functions, loops, recursion, STL sort/search, malformed code, inline ASM
+  - `libclang==18.1.1` adapter with source-location extraction
+  - MSYS2 UCRT64 toolchain headers integration for STL resolution
+  - ADR-001 & ADR-002 decision records added to `docs/DECISIONS.md`
+- [x] **Day 2: Minimal IR**
+  - Typed, parser-independent IR models in `src/complexity_lens/ir/model.py`
+  - AST-to-IR builder in `src/complexity_lens/ir/builder.py`
+  - Serialization (`to_dict()`) and structured `pretty_print()`
+  - Golden snapshot tests across all 12 fixtures; merged via PR #1
+- [x] **Day 3: Complete IR & Safe Input Handling**
+  - Input validator `src/complexity_lens/validation.py` enforcing size, line count, character width, strict UTF-8, and bracket nesting limits
+  - Strict `#include` directive whitelist preventing header/preprocessor injection before parsing
+  - Structured diagnostics (`IRDiagnostic`) with severity, span, and `analysis_complete` flag
+  - Added support for `DO_WHILE` and `RANGE_FOR` loop kinds, and container type provenance tracking
+  - Documented supported and rejected constructs in `docs/SUPPORTED_SUBSET.md` and ADR-004 in `docs/DECISIONS.md`
+  - 101 validation tests and 185 total unit/regression tests passing; zero lint errors
 - [ ] **Day 4: Static Complexity Rules (Loops & Polynomial Algebra)**
 - [ ] **Day 5: Static Rules (STL & Recursion Templates)**
 - [ ] **Day 6: Feature Extraction (26 features + leakage check)**

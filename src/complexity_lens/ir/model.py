@@ -6,6 +6,30 @@ functions, loops, bounds/updates, function calls, recursion sites, recognized
 STL operations, source spans, and unsupported constructs.
 
 Parsing logic is kept completely separate from these models.
+
+``analysis_complete``
+---------------------
+``ProgramIR.analysis_complete = True`` means no known completeness failures
+were encountered while constructing the supported IR for this translation unit.
+It does **not** guarantee that any future complexity prediction is
+mathematically exact.  The flag is set to ``False`` by:
+
+* Any error-severity (``"error"`` or ``"fatal"``) diagnostic.
+* Any ``UnsupportedIR`` node at any nesting level.
+
+Warning-only diagnostics do not automatically make the IR incomplete.
+
+``container_kind_source``
+-------------------------
+``STLOperationIR.container_kind_source`` records how the container kind was
+determined:
+
+* ``"resolved"``  — the parser successfully resolved the container's declared
+  type; this is a genuine semantic fact.
+* ``"source_text"`` — the container kind was inferred from declaration source
+  text (e.g. a ``vector<…>`` spelling); this is a best-effort guess and MUST
+  NOT be presented as a resolved semantic type.
+* ``None``  — the container kind is unknown or could not be determined.
 """
 
 from __future__ import annotations
@@ -55,6 +79,13 @@ class UnsupportedKind(str, Enum):
     OPAQUE_CONSTRUCT = "OPAQUE_CONSTRUCT" # Other unsupported constructs
 
 
+class DiagnosticSeverity(str, Enum):
+    NOTE = "note"
+    WARNING = "warning"
+    ERROR = "error"
+    FATAL = "fatal"
+
+
 @dataclasses.dataclass(frozen=True)
 class SourceSpan:
     """Accurate source span representing start and end location in a file."""
@@ -76,6 +107,36 @@ class SourceSpan:
             "end_line": self.end_line,
             "end_col": self.end_col,
         }
+
+
+@dataclasses.dataclass
+class IRDiagnostic:
+    """A structured diagnostic associated with a ProgramIR.
+
+    Parameters
+    ----------
+    severity:
+        One of ``"note"``, ``"warning"``, ``"error"``, ``"fatal"``.
+    message:
+        Human-readable description of the diagnostic.
+    span:
+        Source location, if available.
+    """
+
+    severity: str  # matches DiagnosticSeverity values
+    message: str
+    span: SourceSpan | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "severity": self.severity,
+            "message": self.message,
+            "span": self.span.to_dict() if self.span else None,
+        }
+
+    def is_error(self) -> bool:
+        """Return True for error- or fatal-severity diagnostics."""
+        return self.severity in ("error", "fatal")
 
 
 @dataclasses.dataclass
@@ -139,7 +200,17 @@ class CallIR:
 
 @dataclasses.dataclass
 class STLOperationIR:
-    """A recognized C++ Standard Template Library operation."""
+    """A recognized C++ Standard Template Library operation.
+
+    Parameters
+    ----------
+    container_kind_source:
+        How the container kind was inferred.  One of:
+
+        * ``"resolved"``    — parser resolved the declared type.
+        * ``"source_text"`` — inferred from source-text spelling; best-effort.
+        * ``None``          — unknown / not determined.
+    """
 
     id: str
     operation: STLOperationKind
@@ -147,6 +218,7 @@ class STLOperationIR:
     container: str | None
     arguments: list[str]
     span: SourceSpan
+    container_kind_source: str | None = None  # "resolved", "source_text", or None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -155,6 +227,7 @@ class STLOperationIR:
             "operation": self.operation.value,
             "callee_name": self.callee_name,
             "container": self.container,
+            "container_kind_source": self.container_kind_source,
             "arguments": self.arguments,
             "span": self.span.to_dict(),
         }
@@ -305,13 +378,30 @@ class FunctionIR:
 
 @dataclasses.dataclass
 class ProgramIR:
-    """The root Intermediate Representation of a C++ translation unit."""
+    """The root Intermediate Representation of a C++ translation unit.
+
+    Attributes
+    ----------
+    analysis_complete:
+        ``True`` iff no completeness failures were detected during IR
+        construction.  Set to ``False`` by any error/fatal diagnostic or any
+        ``UnsupportedIR`` node.  Does **not** guarantee mathematical exactness
+        of future complexity predictions.
+    diagnostics:
+        Structured list of :class:`IRDiagnostic` objects with severity,
+        message, and optional span.
+    """
 
     source_path: str
     functions: list[FunctionIR] = dataclasses.field(default_factory=list)
     unsupported_constructs: list[UnsupportedIR] = dataclasses.field(default_factory=list)
     has_syntax_errors: bool = False
-    diagnostics: list[str] = dataclasses.field(default_factory=list)
+    diagnostics: list[IRDiagnostic] = dataclasses.field(default_factory=list)
+    analysis_complete: bool = True
+
+    # ------------------------------------------------------------------
+    # Traversal helpers
+    # ------------------------------------------------------------------
 
     def all_loops(self) -> list[LoopIR]:
         res: list[LoopIR] = []
@@ -337,11 +427,16 @@ class ProgramIR:
             res.extend(func.all_unsupported())
         return res
 
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "source_path": self.source_path,
             "has_syntax_errors": self.has_syntax_errors,
-            "diagnostics": self.diagnostics,
+            "analysis_complete": self.analysis_complete,
+            "diagnostics": [d.to_dict() for d in self.diagnostics],
             "functions": [f.to_dict() for f in self.functions],
             "unsupported_constructs": [u.to_dict() for u in self.unsupported_constructs],
         }
@@ -349,10 +444,23 @@ class ProgramIR:
     def pretty_print(self) -> str:
         """Return a structured, readable indented view of the IR."""
         lines: list[str] = [f"ProgramIR({self.source_path})"]
-        if self.has_syntax_errors:
-            lines.append(f"  [SYNTAX ERRORS] ({len(self.diagnostics)} diagnostics)")
-            for d in self.diagnostics:
-                lines.append(f"    ! {d}")
+
+        complete_tag = "COMPLETE" if self.analysis_complete else "INCOMPLETE"
+        lines.append(f"  analysis_complete={self.analysis_complete} [{complete_tag}]")
+
+        if self.diagnostics:
+            err_diags = [d for d in self.diagnostics if d.is_error()]
+            warn_diags = [d for d in self.diagnostics if not d.is_error()]
+            if err_diags:
+                lines.append(f"  [ERRORS] ({len(err_diags)} error/fatal diagnostics)")
+                for d in err_diags:
+                    loc = f" @ {d.span}" if d.span else ""
+                    lines.append(f"    ! [{d.severity}] {d.message}{loc}")
+            if warn_diags:
+                lines.append(f"  [WARNINGS] ({len(warn_diags)} diagnostics)")
+                for d in warn_diags:
+                    loc = f" @ {d.span}" if d.span else ""
+                    lines.append(f"    ~ [{d.severity}] {d.message}{loc}")
 
         if self.unsupported_constructs:
             lines.append("  [Top-Level Unsupported Constructs]")
@@ -387,9 +495,14 @@ class ProgramIR:
                         _print_body(item.body, indent + 2)
                     elif isinstance(item, STLOperationIR):
                         cont_desc = f" on {item.container}" if item.container else ""
+                        kind_src = (
+                            f" [{item.container_kind_source}]"
+                            if item.container_kind_source
+                            else ""
+                        )
                         args_s = ", ".join(item.arguments)
                         lines.append(
-                            f"{ind}- STL {item.operation.value}{cont_desc}: "
+                            f"{ind}- STL {item.operation.value}{cont_desc}{kind_src}: "
                             f"{item.callee_name}({args_s}) @ {item.span}"
                         )
                     elif isinstance(item, CallIR):

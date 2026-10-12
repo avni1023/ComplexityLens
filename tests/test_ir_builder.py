@@ -284,7 +284,10 @@ class TestIRMalformed:
     def test_syntax_errors_recorded(self):
         prog = _ir("10_malformed.cpp")
         assert prog.has_syntax_errors
+        # diagnostics is now list[IRDiagnostic] — check structured objects
         assert len(prog.diagnostics) >= 1
+        error_diags = [d for d in prog.diagnostics if d.is_error()]
+        assert len(error_diags) >= 1
         assert len(prog.unsupported_constructs) >= 1
         u = prog.unsupported_constructs[0]
         assert u.kind == UnsupportedKind.UNKNOWN_SYNTAX
