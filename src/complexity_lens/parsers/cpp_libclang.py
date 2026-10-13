@@ -185,9 +185,17 @@ def _build_node(cursor, depth: int, source_path: str = "") -> ASTNode:
     start = _loc(cursor.extent.start)
     end = _loc(cursor.extent.end)
 
+    kind = None
+    kind_name = "UNKNOWN_CURSOR"
+    try:
+        kind = cursor.kind
+        kind_name = kind.name
+    except Exception:
+        kind_name = f"CURSOR_{getattr(cursor, '_kind_id', 'UNKNOWN')}"
+
     type_spelling = ""
     try:
-        if cursor.kind == _ci.CursorKind.FUNCTION_DECL:
+        if kind and kind == _ci.CursorKind.FUNCTION_DECL:
             type_spelling = cursor.result_type.spelling or ""
         elif cursor.type:
             type_spelling = cursor.type.spelling or ""
@@ -201,10 +209,10 @@ def _build_node(cursor, depth: int, source_path: str = "") -> ASTNode:
             or (loc.file == source_path)
             or (Path(loc.file).name == Path(source_path).name)
         )
-        if is_in_source and (
-            cursor.kind.is_expression()
-            or cursor.kind.is_statement()
-            or cursor.kind.is_declaration()
+        if is_in_source and kind and (
+            kind.is_expression()
+            or kind.is_statement()
+            or kind.is_declaration()
         ):
             if end.line - start.line <= 10:
                 tokens = [t.spelling for t in cursor.get_tokens()]
@@ -212,7 +220,7 @@ def _build_node(cursor, depth: int, source_path: str = "") -> ASTNode:
         pass
 
     node = ASTNode(
-        kind=cursor.kind.name,
+        kind=kind_name,
         spelling=cursor.spelling,
         loc=loc,
         extent_start=start,
