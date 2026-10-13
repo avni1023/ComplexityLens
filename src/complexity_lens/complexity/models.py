@@ -62,6 +62,33 @@ class ReasonCode(str, Enum):
     NAMED_CONSTANT_AS_INPUT_SIZE = "NAMED_CONSTANT_AS_INPUT_SIZE"
     AMORTIZED_CONSTANT_CALL = "AMORTIZED_CONSTANT_CALL"
     PARTIAL_IR = "PARTIAL_IR"
+    # Stage 1 — STL & container cost rules
+    HASH_AVERAGE_CASE = "HASH_AVERAGE_CASE"
+    AMORTIZED = "AMORTIZED"
+    CONTAINER_KIND_FROM_SOURCE_TEXT = "CONTAINER_KIND_FROM_SOURCE_TEXT"
+    STL_SORT = "STL_SORT"
+    STL_FIND = "STL_FIND"
+    STL_BINARY_SEARCH = "STL_BINARY_SEARCH"
+    STL_HASH_OP = "STL_HASH_OP"
+    STL_ORDERED_OP = "STL_ORDERED_OP"
+    VECTOR_INSERT_ERASE = "VECTOR_INSERT_ERASE"
+    UNSUPPORTED_COMPARATOR = "UNSUPPORTED_COMPARATOR"
+    UNSUPPORTED_RANGE = "UNSUPPORTED_RANGE"
+    UNSUPPORTED_ITERATOR = "UNSUPPORTED_ITERATOR"
+    # Stage 2 — User-function substitution
+    FUNCTION_SUBSTITUTED = "FUNCTION_SUBSTITUTED"
+    ARGUMENT_MAPPING_UNSUPPORTED = "ARGUMENT_MAPPING_UNSUPPORTED"
+    CALL_DEPTH_EXCEEDED = "CALL_DEPTH_EXCEEDED"
+    MUTUAL_RECURSION = "MUTUAL_RECURSION"
+    # Stage 3 — Recursion templates
+    RECURSION_TEMPLATE_T1 = "RECURSION_TEMPLATE_T1"
+    RECURSION_TEMPLATE_T2 = "RECURSION_TEMPLATE_T2"
+    RECURSION_TEMPLATE_T3 = "RECURSION_TEMPLATE_T3"
+    RECURSION_TEMPLATE_T4 = "RECURSION_TEMPLATE_T4"
+    BASE_CASE_MISSING = "BASE_CASE_MISSING"
+    RECURSION_IN_LOOP = "RECURSION_IN_LOOP"
+    RANGE_RECURSION_UNSUPPORTED = "RANGE_RECURSION_UNSUPPORTED"
+    UNSUPPORTED_REDUCTION = "UNSUPPORTED_REDUCTION"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -283,6 +310,7 @@ class AnalysisResult:
     evidence_node_ids: list[str] = dataclasses.field(default_factory=list)
     source_spans: list[SourceSpan] = dataclasses.field(default_factory=list)
     reason_codes: list[str] = dataclasses.field(default_factory=list)
+    assumptions: list[str] = dataclasses.field(default_factory=list)
     explanation: str = ""
     notes: list[str] = dataclasses.field(default_factory=list)
     rule_trace: list[RuleTraceEntry] = dataclasses.field(default_factory=list)
@@ -297,6 +325,7 @@ class AnalysisResult:
             "evidence_node_ids": list(self.evidence_node_ids),
             "source_spans": [s.to_dict() for s in self.source_spans],
             "reason_codes": list(self.reason_codes),
+            "assumptions": list(self.assumptions),
             "explanation": self.explanation,
             "notes": list(self.notes),
             "rule_trace": [entry.to_dict() for entry in self.rule_trace],
