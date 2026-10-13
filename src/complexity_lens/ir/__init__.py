@@ -23,6 +23,7 @@ from complexity_lens.ir.builder import (
 )
 from complexity_lens.ir.model import (
     BoundKind,
+    BranchIR,
     CallIR,
     DiagnosticSeverity,
     FunctionIR,
@@ -42,6 +43,7 @@ from complexity_lens.ir.model import (
 
 __all__ = [
     "BoundKind",
+    "BranchIR",
     "CallIR",
     "DiagnosticSeverity",
     "FunctionIR",

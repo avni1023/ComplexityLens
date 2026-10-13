@@ -255,6 +255,65 @@ class UnsupportedIR:
 
 
 @dataclasses.dataclass
+class BranchIR:
+    """A conditional branching construct (if/else)."""
+
+    id: str
+    condition: str
+    then_body: list[Any] = dataclasses.field(default_factory=list)
+    else_body: list[Any] = dataclasses.field(default_factory=list)
+    span: SourceSpan = dataclasses.field(
+        default_factory=lambda: SourceSpan("", 0, 0, 0, 0)
+    )
+
+    def all_loops(self) -> list[LoopIR]:
+        res: list[LoopIR] = []
+        for item in self.then_body + self.else_body:
+            if isinstance(item, LoopIR):
+                res.extend(item.all_loops())
+            elif isinstance(item, BranchIR):
+                res.extend(item.all_loops())
+        return res
+
+    def all_calls(self) -> list[CallIR]:
+        res: list[CallIR] = []
+        for item in self.then_body + self.else_body:
+            if isinstance(item, CallIR):
+                res.append(item)
+            elif isinstance(item, (LoopIR, BranchIR)):
+                res.extend(item.all_calls())
+        return res
+
+    def all_stl_ops(self) -> list[STLOperationIR]:
+        res: list[STLOperationIR] = []
+        for item in self.then_body + self.else_body:
+            if isinstance(item, STLOperationIR):
+                res.append(item)
+            elif isinstance(item, (LoopIR, BranchIR)):
+                res.extend(item.all_stl_ops())
+        return res
+
+    def all_unsupported(self) -> list[UnsupportedIR]:
+        res: list[UnsupportedIR] = []
+        for item in self.then_body + self.else_body:
+            if isinstance(item, UnsupportedIR):
+                res.append(item)
+            elif isinstance(item, (LoopIR, BranchIR)):
+                res.extend(item.all_unsupported())
+        return res
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "type": "BranchIR",
+            "condition": self.condition,
+            "span": self.span.to_dict(),
+            "then_body": [node.to_dict() for node in self.then_body if hasattr(node, "to_dict")],
+            "else_body": [node.to_dict() for node in self.else_body if hasattr(node, "to_dict")],
+        }
+
+
+@dataclasses.dataclass
 class LoopIR:
     """A loop construct (for, while, do-while, range-for)."""
 
@@ -266,11 +325,20 @@ class LoopIR:
     span: SourceSpan
     has_early_exit: bool = False
     body: list[Any] = dataclasses.field(default_factory=list)
+    init_expr: str | None = None
+    init_val: int | None = None
+    init_var: str | None = None
+    loop_var_modified: bool = False
+    is_dependent_bound: bool = False
+    container_name: str | None = None
+    is_fixed_size_array: bool = False
 
     def all_loops(self) -> list[LoopIR]:
         res = [self]
         for item in self.body:
             if isinstance(item, LoopIR):
+                res.extend(item.all_loops())
+            elif isinstance(item, BranchIR):
                 res.extend(item.all_loops())
         return res
 
@@ -279,7 +347,7 @@ class LoopIR:
         for item in self.body:
             if isinstance(item, CallIR):
                 res.append(item)
-            elif isinstance(item, LoopIR):
+            elif isinstance(item, (LoopIR, BranchIR)):
                 res.extend(item.all_calls())
         return res
 
@@ -288,7 +356,7 @@ class LoopIR:
         for item in self.body:
             if isinstance(item, STLOperationIR):
                 res.append(item)
-            elif isinstance(item, LoopIR):
+            elif isinstance(item, (LoopIR, BranchIR)):
                 res.extend(item.all_stl_ops())
         return res
 
@@ -297,7 +365,7 @@ class LoopIR:
         for item in self.body:
             if isinstance(item, UnsupportedIR):
                 res.append(item)
-            elif isinstance(item, LoopIR):
+            elif isinstance(item, (LoopIR, BranchIR)):
                 res.extend(item.all_unsupported())
         return res
 
@@ -327,11 +395,17 @@ class FunctionIR:
     body: list[Any] = dataclasses.field(default_factory=list)
     is_recursive: bool = False
     recursive_call_sites: list[CallIR] = dataclasses.field(default_factory=list)
+    local_constants: dict[str, int] = dataclasses.field(default_factory=dict)
+    named_constants: set[str] = dataclasses.field(default_factory=set)
+    cin_vars: set[str] = dataclasses.field(default_factory=set)
+    multiply_assigned_vars: set[str] = dataclasses.field(default_factory=set)
 
     def all_loops(self) -> list[LoopIR]:
         res: list[LoopIR] = []
         for item in self.body:
             if isinstance(item, LoopIR):
+                res.extend(item.all_loops())
+            elif isinstance(item, BranchIR):
                 res.extend(item.all_loops())
         return res
 
@@ -340,7 +414,7 @@ class FunctionIR:
         for item in self.body:
             if isinstance(item, CallIR):
                 res.append(item)
-            elif isinstance(item, LoopIR):
+            elif isinstance(item, (LoopIR, BranchIR)):
                 res.extend(item.all_calls())
         return res
 
@@ -349,7 +423,7 @@ class FunctionIR:
         for item in self.body:
             if isinstance(item, STLOperationIR):
                 res.append(item)
-            elif isinstance(item, LoopIR):
+            elif isinstance(item, (LoopIR, BranchIR)):
                 res.extend(item.all_stl_ops())
         return res
 
@@ -358,7 +432,7 @@ class FunctionIR:
         for item in self.body:
             if isinstance(item, UnsupportedIR):
                 res.append(item)
-            elif isinstance(item, LoopIR):
+            elif isinstance(item, (LoopIR, BranchIR)):
                 res.extend(item.all_unsupported())
         return res
 
@@ -515,6 +589,14 @@ class ProgramIR:
                         lines.append(
                             f"{ind}- Call: {item.callee_name}({args_s}){rec} @ {item.span}"
                         )
+                    elif isinstance(item, BranchIR):
+                        lines.append(f"{ind}- Branch (cond='{item.condition}') @ {item.span}")
+                        if item.then_body:
+                            lines.append(f"{ind}    Then:")
+                            _print_body(item.then_body, indent + 3)
+                        if item.else_body:
+                            lines.append(f"{ind}    Else:")
+                            _print_body(item.else_body, indent + 3)
                     elif isinstance(item, UnsupportedIR):
                         lines.append(
                             f"{ind}- Unsupported: {item.kind.value} ({item.reason}) @ {item.span}"

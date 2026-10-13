@@ -38,11 +38,13 @@ A fatal parse failure never produces a misleading, valid-looking empty IR.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
 from complexity_lens.ir.model import (
     BoundKind,
+    BranchIR,
     CallIR,
     FunctionIR,
     IRDiagnostic,
@@ -107,6 +109,10 @@ def _extract_loop_bound(
     loop_var: str | None,
     outer_vars: set[str],
     param_names: set[str],
+    local_constants: dict[str, int] | None = None,
+    named_constants: set[str] | None = None,
+    multiply_assigned: set[str] | None = None,
+    cin_vars: set[str] | None = None,
 ) -> LoopBound:
     """Analyze a condition expression to classify the loop termination bound."""
     if not cond_node:
@@ -153,6 +159,15 @@ def _extract_loop_bound(
 
     bound_str = bound_expr.strip()
 
+    # Rule: comparison with '!=' yields UNKNOWN
+    if comparison_op == "!=":
+        return LoopBound(
+            kind=BoundKind.UNKNOWN,
+            variable=var_name,
+            bound_expr=bound_str,
+            comparison_op=comparison_op,
+        )
+
     # Classification logic
     # 1. Constant integer literal
     if bound_str.isdigit():
@@ -172,9 +187,41 @@ def _extract_loop_bound(
             comparison_op=comparison_op,
         )
 
-    # 3. Linear input: function parameter or container size() call
+    # 3. Local variable with single literal assignment is constant
+    if local_constants and bound_str in local_constants:
+        return LoopBound(
+            kind=BoundKind.CONSTANT,
+            variable=var_name,
+            bound_expr=bound_str,
+            comparison_op=comparison_op,
+        )
+
+    # 4. Local variable with multiple assignments -> UNKNOWN
+    if multiply_assigned and bound_str in multiply_assigned:
+        return LoopBound(
+            kind=BoundKind.UNKNOWN,
+            variable=var_name,
+            bound_expr=bound_str,
+            comparison_op=comparison_op,
+        )
+
+    # 5. Named compile-time constant (#define N, const int N, constexpr int N)
+    if named_constants and bound_str in named_constants:
+        return LoopBound(
+            kind=BoundKind.LINEAR_INPUT,
+            variable=var_name,
+            bound_expr=bound_str,
+            comparison_op=comparison_op,
+        )
+
+    # 6. Linear input: function parameter, cin assigned, or container size() call
     clean_id = bound_str.split(".")[0].strip()
-    if clean_id in param_names or "size" in bound_str or "length" in bound_str:
+    if (
+        clean_id in param_names
+        or (cin_vars and clean_id in cin_vars)
+        or "size" in bound_str
+        or "length" in bound_str
+    ):
         return LoopBound(
             kind=BoundKind.LINEAR_INPUT,
             variable=var_name,
@@ -228,60 +275,180 @@ def _extract_loop_update(
 
         # Compound assignments: +=, -=
         if "+=" in tokens or "-=" in tokens or update_node.kind == "COMPOUND_ASSIGNMENT_OPERATOR":
-            if "+=" in tokens or "-=" in tokens:
-                step_op = "+=" if "+=" in tokens else "-="
-                return LoopUpdate(
-                    kind=UpdateKind.ADDITIVE,
-                    variable=loop_var,
-                    step_expr=text,
-                    step_op=step_op,
-                )
+            op_str = "+=" if "+=" in tokens else "-="
+            # Check for doubling pattern i += i
+            if op_str == "+=" and loop_var and tokens:
+                try:
+                    idx = tokens.index("+=")
+                    rhs_toks = tokens[idx + 1:]
+                    if rhs_toks and rhs_toks[0] == loop_var:
+                        return LoopUpdate(
+                            kind=UpdateKind.MULTIPLICATIVE,
+                            variable=loop_var,
+                            step_expr=text,
+                            step_op="*=",
+                        )
+                except ValueError:
+                    pass
+
+            if op_str in tokens:
+                try:
+                    idx = tokens.index(op_str)
+                    rhs_toks = tokens[idx + 1:]
+                    rhs_str = "".join(rhs_toks).strip()
+                    # Nonzero literal constant step
+                    if rhs_str.isdigit() and int(rhs_str) != 0:
+                        return LoopUpdate(
+                            kind=UpdateKind.ADDITIVE,
+                            variable=loop_var,
+                            step_expr=text,
+                            step_op=op_str,
+                        )
+                    else:
+                        # Variable step or zero -> UNKNOWN
+                        return LoopUpdate(
+                            kind=UpdateKind.UNKNOWN,
+                            variable=loop_var,
+                            step_expr=text,
+                            step_op=op_str,
+                        )
+                except ValueError:
+                    pass
+
             if "*=" in tokens or "/=" in tokens or "<<=" in tokens or ">>=" in tokens:
-                step_op = "*=" if "*=" in tokens else "/="
-                return LoopUpdate(
-                    kind=UpdateKind.MULTIPLICATIVE,
-                    variable=loop_var,
-                    step_expr=text,
-                    step_op=step_op,
-                )
+                mul_op = "*=" if "*=" in tokens else "/="
+                try:
+                    op_find = next(op for op in ("*=", "/=", ">>=", "<<=") if op in tokens)
+                    idx = tokens.index(op_find)
+                    rhs_toks = tokens[idx + 1:]
+                    rhs_str = "".join(rhs_toks).strip()
+                    if rhs_str.isdigit() and int(rhs_str) >= (1 if op_find == ">>=" else 2):
+                        return LoopUpdate(
+                            kind=UpdateKind.MULTIPLICATIVE,
+                            variable=loop_var,
+                            step_expr=text,
+                            step_op=mul_op,
+                        )
+                    else:
+                        return LoopUpdate(
+                            kind=UpdateKind.UNKNOWN,
+                            variable=loop_var,
+                            step_expr=text,
+                            step_op=mul_op,
+                        )
+                except ValueError:
+                    pass
 
         # Check binary expressions like i = i * 2 or i = i + 1
         if any(op in tokens for op in ("*", "/")):
-            return LoopUpdate(
-                kind=UpdateKind.MULTIPLICATIVE,
-                variable=loop_var,
-                step_expr=text,
-                step_op="*=",
-            )
+            try:
+                op_char = "*" if "*" in tokens else "/"
+                idx = tokens.index(op_char)
+                rhs_toks = tokens[idx + 1:]
+                rhs_str = "".join(rhs_toks).strip()
+                if rhs_str.isdigit() and int(rhs_str) >= 2:
+                    return LoopUpdate(
+                        kind=UpdateKind.MULTIPLICATIVE,
+                        variable=loop_var,
+                        step_expr=text,
+                        step_op="*=" if op_char == "*" else "/=",
+                    )
+                else:
+                    return LoopUpdate(
+                        kind=UpdateKind.UNKNOWN,
+                        variable=loop_var,
+                        step_expr=text,
+                        step_op="*=" if op_char == "*" else "/=",
+                    )
+            except ValueError:
+                pass
+
         if any(op in tokens for op in ("+", "-")):
-            return LoopUpdate(
-                kind=UpdateKind.ADDITIVE,
-                variable=loop_var,
-                step_expr=text,
-                step_op="+=",
-            )
+            try:
+                op_char = "+" if "+" in tokens else "-"
+                idx = tokens.index(op_char)
+                rhs_toks = tokens[idx + 1:]
+                rhs_str = "".join(rhs_toks).strip()
+                if rhs_str.isdigit() and int(rhs_str) != 0:
+                    return LoopUpdate(
+                        kind=UpdateKind.ADDITIVE,
+                        variable=loop_var,
+                        step_expr=text,
+                        step_op="+=" if op_char == "+" else "-=",
+                    )
+                else:
+                    return LoopUpdate(
+                        kind=UpdateKind.UNKNOWN,
+                        variable=loop_var,
+                        step_expr=text,
+                        step_op="+=" if op_char == "+" else "-=",
+                    )
+            except ValueError:
+                pass
 
     # For while-loops, the update is inside the body
     if body_node and loop_var:
         for node in body_node.all_nodes():
             if node.kind in ("UNARY_OPERATOR", "COMPOUND_ASSIGNMENT_OPERATOR", "BINARY_OPERATOR"):
                 toks = node.tokens
+                if not toks:
+                    continue
                 if loop_var in toks or loop_var == node.spelling:
                     text = " ".join(toks)
-                    if any(op in toks for op in ("++", "--", "+=", "-=")):
+                    if any(op in toks for op in ("++", "--")):
                         return LoopUpdate(
                             kind=UpdateKind.ADDITIVE,
                             variable=loop_var,
                             step_expr=text,
-                            step_op="++" if "++" in toks else "+=",
+                            step_op="++" if "++" in toks else "--",
                         )
+                    if "+=" in toks or "-=" in toks:
+                        op_str = "+=" if "+=" in toks else "-="
+                        idx = toks.index(op_str)
+                        lhs_toks = toks[:idx]
+                        if loop_var in lhs_toks or loop_var == node.spelling:
+                            rhs_str = "".join(toks[idx + 1:]).strip()
+                            if rhs_str.isdigit() and int(rhs_str) != 0:
+                                return LoopUpdate(
+                                    kind=UpdateKind.ADDITIVE,
+                                    variable=loop_var,
+                                    step_expr=text,
+                                    step_op=op_str,
+                                )
+                            elif rhs_str == loop_var and op_str == "+=":
+                                return LoopUpdate(
+                                    kind=UpdateKind.MULTIPLICATIVE,
+                                    variable=loop_var,
+                                    step_expr=text,
+                                    step_op="*=",
+                                )
+                            else:
+                                return LoopUpdate(
+                                    kind=UpdateKind.UNKNOWN,
+                                    variable=loop_var,
+                                    step_expr=text,
+                                    step_op=op_str,
+                                )
                     if any(op in toks for op in ("*=", "/=", "*", "/")):
-                        return LoopUpdate(
-                            kind=UpdateKind.MULTIPLICATIVE,
-                            variable=loop_var,
-                            step_expr=text,
-                            step_op="*=" if "*=" in toks else "/=",
-                        )
+                        op_char = next(op for op in ("*=", "/=", "*", "/") if op in toks)
+                        idx = toks.index(op_char)
+                        lhs_toks = toks[:idx]
+                        if loop_var in lhs_toks or loop_var == node.spelling:
+                            rhs_str = "".join(toks[idx + 1:]).strip()
+                            if rhs_str.isdigit() and int(rhs_str) >= 2:
+                                return LoopUpdate(
+                                    kind=UpdateKind.MULTIPLICATIVE,
+                                    variable=loop_var,
+                                    step_expr=text,
+                                    step_op="*=" if "*" in op_char else "/=",
+                                )
+                            else:
+                                return LoopUpdate(
+                                    kind=UpdateKind.UNKNOWN,
+                                    variable=loop_var,
+                                    step_expr=text,
+                                    step_op="*=" if "*" in op_char else "/=",
+                                )
 
     return LoopUpdate(
         kind=UpdateKind.UNKNOWN,
@@ -420,10 +587,79 @@ def _analyze_call(
 # ---------------------------------------------------------------------------
 
 
+def _detect_loop_var_modification(
+    body_node: ASTNode | None,
+    target_vars: set[str],
+    is_while: bool = False,
+) -> bool:
+    """Return True if loop variable or bound variable is modified in body."""
+    if not body_node or not target_vars:
+        return False
+    mod_count = 0
+    for n in body_node.all_nodes():
+        if n == body_node:
+            continue
+        toks = n.tokens
+        if not toks:
+            continue
+        # Unary operators: ++i, i++, --i, i--
+        if n.kind == "UNARY_OPERATOR" and any(op in toks for op in ("++", "--")):
+            if any(v in toks for v in target_vars):
+                mod_count += 1
+        # Compound assignment
+        elif n.kind == "COMPOUND_ASSIGNMENT_OPERATOR":
+            for op in ("+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="):
+                if op in toks:
+                    idx = toks.index(op)
+                    lhs = toks[:idx]
+                    if any(v in lhs for v in target_vars):
+                        mod_count += 1
+                    break
+        # Assignment
+        elif (
+            n.kind == "BINARY_OPERATOR"
+            and "=" in toks
+            and not any(cmp_op in toks for cmp_op in ("==", "<=", ">=", "!="))
+        ):
+            try:
+                idx = toks.index("=")
+                lhs = toks[:idx]
+                if any(v in lhs for v in target_vars):
+                    mod_count += 1
+            except ValueError:
+                pass
+        # Streaming from cin
+        elif "cin" in toks and ">>" in toks:
+            try:
+                idx = toks.index(">>")
+                rhs = toks[idx + 1:]
+                if any(v in rhs for v in target_vars):
+                    mod_count += 1
+            except ValueError:
+                pass
+
+    if is_while:
+        # In while loops, exactly 1 modification to the loop var is expected as its step
+        return mod_count > 1
+    return mod_count > 0
+
+
 class _IRBuilderContext:
-    def __init__(self, enclosing_func_name: str, param_names: set[str]) -> None:
+    def __init__(
+        self,
+        enclosing_func_name: str,
+        param_names: set[str],
+        local_constants: dict[str, int] | None = None,
+        named_constants: set[str] | None = None,
+        multiply_assigned: set[str] | None = None,
+        cin_vars: set[str] | None = None,
+    ) -> None:
         self.enclosing_func_name = enclosing_func_name
         self.param_names = param_names
+        self.local_constants = local_constants or {}
+        self.named_constants = named_constants or set()
+        self.multiply_assigned = multiply_assigned or set()
+        self.cin_vars = cin_vars or set()
         self.counter = 0
 
     def next_id(self, prefix: str) -> str:
@@ -458,10 +694,15 @@ def _build_body_items(
             cond_node: ASTNode | None = None
             update_node: ASTNode | None = None
             body_node: ASTNode | None = None
+            init_expr: str | None = None
+            init_val: int | None = None
+            init_var: str | None = None
+            container_name: str | None = None
+            is_fixed_array: bool = False
 
             if loop_kind == LoopKind.FOR:
-                # Typically [init, cond, update, body] or subset
                 c_list = child.children
+                _init_node = None
                 if len(c_list) >= 4:
                     _init_node, cond_node, update_node, body_node = (
                         c_list[0],
@@ -474,14 +715,27 @@ def _build_body_items(
                 elif len(c_list) == 1:
                     body_node = c_list[0]
 
-                # Identify loop variable from init
-                if c_list:
+                # Identify loop variable and initializer from init
+                if _init_node:
                     var_decl = next(
-                        (n for n in c_list[0].all_nodes() if n.kind == "VAR_DECL"),
+                        (n for n in _init_node.all_nodes() if n.kind == "VAR_DECL"),
                         None,
                     )
                     if var_decl:
                         loop_var = var_decl.spelling
+                    itoks = _init_node.tokens
+                    if "=" in itoks:
+                        try:
+                            eq_idx = itoks.index("=")
+                            if eq_idx + 1 < len(itoks):
+                                val_str = itoks[eq_idx + 1]
+                                if val_str.isdigit():
+                                    init_val = int(val_str)
+                                    init_expr = val_str
+                            if eq_idx > 0:
+                                init_var = itoks[eq_idx - 1]
+                        except ValueError:
+                            pass
 
             elif loop_kind == LoopKind.WHILE:
                 c_list = child.children
@@ -498,6 +752,11 @@ def _build_body_items(
                     )
                     if first_ref:
                         loop_var = first_ref.spelling
+                if loop_var:
+                    init_var = loop_var
+                    if loop_var in ctx.local_constants:
+                        init_val = ctx.local_constants[loop_var]
+                        init_expr = str(init_val)
 
             elif loop_kind == LoopKind.DO_WHILE:
                 c_list = child.children
@@ -514,10 +773,14 @@ def _build_body_items(
                     )
                     if first_ref:
                         loop_var = first_ref.spelling
+                if loop_var:
+                    init_var = loop_var
+                    if loop_var in ctx.local_constants:
+                        init_val = ctx.local_constants[loop_var]
+                        init_expr = str(init_val)
 
             elif loop_kind == LoopKind.RANGE_FOR:
                 c_list = child.children
-                # Range-for: [range_decl, range_init, body]
                 if len(c_list) >= 2:
                     body_node = c_list[-1]
                     var_decl = next(
@@ -527,10 +790,50 @@ def _build_body_items(
                     if var_decl:
                         loop_var = var_decl.spelling
 
+                # Find container name and fixed-array check
+                c_toks = child.tokens
+                if ":" in c_toks and ")" in c_toks:
+                    try:
+                        c_idx = c_toks.index(":")
+                        close_idx = c_toks.index(")")
+                        range_toks = c_toks[c_idx + 1:close_idx]
+                        range_id = "".join(range_toks).strip()
+                        if range_id:
+                            container_name = range_id
+                    except ValueError:
+                        pass
+                for n in child.all_nodes():
+                    if (
+                        "[" in n.tokens
+                        or "[" in n.type_spelling
+                        or "array" in n.type_spelling
+                    ):
+                        is_fixed_array = True
+
             # Extract bound and update
-            bound = _extract_loop_bound(cond_node, loop_var, outer_vars, ctx.param_names)
+            bound = _extract_loop_bound(
+                cond_node,
+                loop_var,
+                outer_vars,
+                ctx.param_names,
+                local_constants=ctx.local_constants,
+                named_constants=ctx.named_constants,
+                multiply_assigned=ctx.multiply_assigned,
+                cin_vars=ctx.cin_vars,
+            )
             update = _extract_loop_update(update_node, loop_var, body_node)
             early_exit = _has_early_exit(body_node)
+
+            # Check loop variable or bound variable modification in body
+            target_vars = set()
+            if loop_var:
+                target_vars.add(loop_var)
+            if bound.bound_expr and bound.bound_expr.isidentifier():
+                target_vars.add(bound.bound_expr)
+            var_modified = _detect_loop_var_modification(
+                body_node, target_vars, is_while=(loop_kind in (LoopKind.WHILE, LoopKind.DO_WHILE))
+            )
+            is_dep = (bound.kind == BoundKind.DEPENDENT)
 
             # Recurse into loop body
             new_outer = set(outer_vars)
@@ -551,10 +854,83 @@ def _build_body_items(
                     span=loop_span,
                     has_early_exit=early_exit,
                     body=inner_items,
+                    init_expr=init_expr,
+                    init_val=init_val,
+                    init_var=init_var,
+                    loop_var_modified=var_modified,
+                    is_dependent_bound=is_dep,
+                    container_name=container_name,
+                    is_fixed_size_array=is_fixed_array,
                 )
             )
 
-        # 2. Inline Assembly or Unsupported construct
+        # 2. Conditional branch
+        elif child.kind == "IF_STMT":
+            branch_id = ctx.next_id("branch")
+            c_list = child.children
+            cond_expr = "condition"
+            then_body: list[Any] = []
+            else_body: list[Any] = []
+            if c_list:
+                cond_node = c_list[0]
+                cond_expr = (
+                    " ".join(cond_node.tokens)
+                    if cond_node.tokens
+                    else cond_node.spelling or "condition"
+                )
+                if len(c_list) >= 2:
+                    then_node = c_list[1]
+                    if then_node.kind == "COMPOUND_STMT":
+                        then_body = _build_body_items(
+                            then_node, ctx, current_depth, outer_vars
+                        )
+                    else:
+                        then_body = _build_body_items(
+                            ASTNode(
+                                kind="COMPOUND_STMT",
+                                spelling="",
+                                loc=then_node.loc,
+                                extent_start=then_node.extent_start,
+                                extent_end=then_node.extent_end,
+                                depth=then_node.depth,
+                                children=[then_node],
+                            ),
+                            ctx,
+                            current_depth,
+                            outer_vars,
+                        )
+                if len(c_list) >= 3:
+                    else_node = c_list[2]
+                    if else_node.kind == "COMPOUND_STMT":
+                        else_body = _build_body_items(
+                            else_node, ctx, current_depth, outer_vars
+                        )
+                    else:
+                        else_body = _build_body_items(
+                            ASTNode(
+                                kind="COMPOUND_STMT",
+                                spelling="",
+                                loc=else_node.loc,
+                                extent_start=else_node.extent_start,
+                                extent_end=else_node.extent_end,
+                                depth=else_node.depth,
+                                children=[else_node],
+                            ),
+                            ctx,
+                            current_depth,
+                            outer_vars,
+                        )
+            items.append(
+                BranchIR(
+                    id=branch_id,
+                    condition=cond_expr,
+                    then_body=then_body,
+                    else_body=else_body,
+                    span=_span(child),
+                )
+            )
+
+        # 3. Inline Assembly or Unsupported construct
         elif child.kind == "ASM_STMT":
             items.append(
                 UnsupportedIR(
@@ -566,7 +942,7 @@ def _build_body_items(
                 )
             )
 
-        # 3. Call Expression
+        # 4. Call Expression
         elif child.kind == "CALL_EXPR":
             # Filter out trivial iterator calls (.begin, .end) and internal operator overloads
             if (
@@ -578,7 +954,7 @@ def _build_body_items(
             # Still visit children for nested calls
             items.extend(_build_body_items(child, ctx, current_depth, outer_vars))
 
-        # 4. Other statements (compound, if, return, binary expr): recurse
+        # 5. Other statements (compound, return, binary expr): recurse
         else:
             items.extend(_build_body_items(child, ctx, current_depth, outer_vars))
 
@@ -664,6 +1040,24 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                 user_functions.append(func)
 
     # ------------------------------------------------------------------
+    # Top-level named constants (#define N, const int N, constexpr int N)
+    # ------------------------------------------------------------------
+    top_level_named_constants: set[str] = set()
+    for n in parse_result.top_level_nodes:
+        if n.kind == "VAR_DECL" and n.spelling:
+            toks = n.tokens
+            if any(k in toks for k in ("const", "constexpr")):
+                top_level_named_constants.add(n.spelling)
+
+    if parse_result.source_path and Path(parse_result.source_path).is_file():
+        try:
+            src_text = Path(parse_result.source_path).read_text(encoding="utf-8", errors="ignore")
+            for m in re.finditer(r"#define\s+([A-Za-z_]\w*)\s+(\d+)", src_text):
+                top_level_named_constants.add(m.group(1))
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
     # Process each user function
     # ------------------------------------------------------------------
     func_counter = 0
@@ -683,7 +1077,58 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                 if p_name:
                     param_names.add(p_name)
 
-        ctx = _IRBuilderContext(enclosing_func_name=f_name, param_names=param_names)
+        # Function-level variable analysis
+        local_named_constants = set(top_level_named_constants)
+        local_constants: dict[str, int] = {}
+        multiply_assigned: set[str] = set()
+        cin_vars: set[str] = set()
+        assigned_counts: dict[str, int] = {}
+
+        for n in f_node.all_nodes():
+            if n == f_node:
+                continue
+            toks = n.tokens
+            if not toks:
+                continue
+            if "cin" in toks and ">>" in toks:
+                try:
+                    idx = toks.index(">>")
+                    for tok in toks[idx + 1:]:
+                        if tok.isidentifier() and tok not in ("cin", "std"):
+                            cin_vars.add(tok)
+                            break
+                except ValueError:
+                    pass
+            if n.kind == "VAR_DECL" and n.spelling:
+                var_name = n.spelling
+                if any(k in toks for k in ("const", "constexpr")):
+                    local_named_constants.add(var_name)
+                elif "=" in toks:
+                    eq_idx = toks.index("=")
+                    if eq_idx + 1 < len(toks) and toks[eq_idx + 1].isdigit():
+                        local_constants[var_name] = int(toks[eq_idx + 1])
+                        assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
+                else:
+                    assigned_counts[var_name] = assigned_counts.get(var_name, 0)
+            elif n.kind in ("COMPOUND_ASSIGNMENT_OPERATOR", "UNARY_OPERATOR", "BINARY_OPERATOR"):
+                if any(op in toks for op in ("++", "--", "+=", "-=", "*=", "/=", "%=", "=")):
+                    for var in list(local_constants.keys()):
+                        if var in toks:
+                            assigned_counts[var] = assigned_counts.get(var, 0) + 1
+
+        for var, cnt in assigned_counts.items():
+            if cnt > 1:
+                multiply_assigned.add(var)
+                local_constants.pop(var, None)
+
+        ctx = _IRBuilderContext(
+            enclosing_func_name=f_name,
+            param_names=param_names,
+            local_constants=local_constants,
+            named_constants=local_named_constants,
+            multiply_assigned=multiply_assigned,
+            cin_vars=cin_vars,
+        )
 
         # Walk body
         body_items = _build_body_items(f_node, ctx, current_depth=0, outer_vars=set())
@@ -694,6 +1139,8 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
             if isinstance(item, CallIR):
                 all_calls.append(item)
             elif isinstance(item, LoopIR):
+                all_calls.extend(item.all_calls())
+            elif isinstance(item, BranchIR):
                 all_calls.extend(item.all_calls())
 
         rec_sites = [c for c in all_calls if c.is_recursion]
@@ -708,6 +1155,10 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
             body=body_items,
             is_recursive=is_rec,
             recursive_call_sites=rec_sites,
+            local_constants=local_constants,
+            named_constants=local_named_constants,
+            cin_vars=cin_vars,
+            multiply_assigned_vars=multiply_assigned,
         )
         program.functions.append(function_ir)
 
