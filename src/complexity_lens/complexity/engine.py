@@ -454,7 +454,83 @@ class ComplexityEngine:
         # 3. CallIR
         if isinstance(item, CallIR):
             ctx.add_evidence(item.id, item.span)
-            is_allow, is_amort = is_call_allowlisted(item.callee_name)
+
+            # Container constructor handling
+            clean_callee = item.callee_name.replace("std::", "").strip()
+            if clean_callee in ("vector", "string", "array", "pair", "tuple"):
+                if not item.arguments:
+                    # Genuinely constant-cost default construction: vector<int> v;
+                    c = ComplexityClass.constant()
+                    ctx.add_reason(ReasonCode.CONSTANT_WORK.value)
+                    ctx.add_rule_trace(
+                        rule_id="RULE_ALLOWLISTED_CALL",
+                        node_ids=[item.id],
+                        input_classes=[],
+                        output_class=c,
+                    )
+                    return c, Exactness.STRUCTURAL, item.id
+                elif clean_callee in ("vector", "string"):
+                    size_arg = item.arguments[0]
+                    if size_arg.isdigit() or (size_arg in ctx.func.local_constants):
+                        # Literal-sized container: e.g. std::vector<int> v(10); -> O(1)
+                        c = ComplexityClass.constant()
+                        ctx.add_reason(ReasonCode.CONSTANT_WORK.value)
+                        ctx.add_rule_trace(
+                            rule_id="RULE_ALLOWLISTED_CALL",
+                            node_ids=[item.id],
+                            input_classes=[],
+                            output_class=c,
+                        )
+                        return c, Exactness.STRUCTURAL, item.id
+                    elif size_arg in ctx.param_names or size_arg in ctx.func.cin_vars:
+                        # Input-sized container: e.g. std::vector<int> v(n); -> O(n)
+                        c = ComplexityClass.linear()
+                        ctx.input_symbols.add(size_arg)
+                        ctx.add_reason(ReasonCode.LINEAR_LOOP.value)
+                        ctx.add_rule_trace(
+                            rule_id="RULE_CONTAINER_CONSTRUCTOR",
+                            node_ids=[item.id],
+                            input_classes=[],
+                            output_class=c,
+                        )
+                        return c, Exactness.STRUCTURAL, item.id
+                    elif size_arg in ctx.func.named_constants:
+                        # Named-constant sized container: e.g. std::vector<int> v(N); -> O(n)
+                        c = ComplexityClass.linear()
+                        ctx.input_symbols.add(size_arg)
+                        ctx.add_reason(ReasonCode.LINEAR_LOOP.value)
+                        ctx.add_reason(ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value)
+                        ctx.add_rule_trace(
+                            rule_id="RULE_CONTAINER_CONSTRUCTOR",
+                            node_ids=[item.id],
+                            input_classes=[],
+                            output_class=c,
+                        )
+                        return c, Exactness.STRUCTURAL, item.id
+                    else:
+                        # Range constructor or unanalyzable argument -> UNKNOWN
+                        c = ComplexityClass.unknown()
+                        ctx.add_reason(ReasonCode.UNSUPPORTED_CALL.value)
+                        ctx.add_rule_trace(
+                            rule_id="RULE_UNSUPPORTED_CALL",
+                            node_ids=[item.id],
+                            input_classes=[],
+                            output_class=c,
+                        )
+                        return c, Exactness.UNKNOWN, item.id
+                else:
+                    # Other container with arguments -> UNKNOWN
+                    c = ComplexityClass.unknown()
+                    ctx.add_reason(ReasonCode.UNSUPPORTED_CALL.value)
+                    ctx.add_rule_trace(
+                        rule_id="RULE_UNSUPPORTED_CALL",
+                        node_ids=[item.id],
+                        input_classes=[],
+                        output_class=c,
+                    )
+                    return c, Exactness.UNKNOWN, item.id
+
+            is_allow, is_amort = is_call_allowlisted(item.callee_name, item.arguments)
             if is_allow:
                 c = ComplexityClass.constant()
                 if is_amort:
@@ -482,7 +558,7 @@ class ComplexityEngine:
         # 4. STLOperationIR
         if isinstance(item, STLOperationIR):
             ctx.add_evidence(item.id, item.span)
-            is_allow, is_amort = is_call_allowlisted(item.callee_name)
+            is_allow, is_amort = is_call_allowlisted(item.callee_name, item.arguments)
             if is_allow:
                 c = ComplexityClass.constant()
                 if is_amort:

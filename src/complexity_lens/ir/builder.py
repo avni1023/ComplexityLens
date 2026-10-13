@@ -572,10 +572,16 @@ def _analyze_call(
         else:
             shrink_kind = "other"
 
+    args: list[str] = []
+    for c in call_node.children:
+        text = (c.spelling or "".join(c.tokens)).strip()
+        if text:
+            args.append(text)
+
     return CallIR(
         id=node_id,
         callee_name=callee,
-        arguments=[c.spelling for c in call_node.children if c.spelling],
+        arguments=args,
         span=span,
         is_recursion=is_rec,
         shrink_kind=shrink_kind,
@@ -723,16 +729,20 @@ def _build_body_items(
                     )
                     if var_decl:
                         loop_var = var_decl.spelling
+                        init_var = loop_var
                     itoks = _init_node.tokens
                     if "=" in itoks:
                         try:
                             eq_idx = itoks.index("=")
                             if eq_idx + 1 < len(itoks):
-                                val_str = itoks[eq_idx + 1]
+                                rhs_toks = itoks[eq_idx + 1:]
+                                val_str = "".join(rhs_toks).strip().rstrip(";")
+                                init_expr = val_str
                                 if val_str.isdigit():
                                     init_val = int(val_str)
-                                    init_expr = val_str
-                            if eq_idx > 0:
+                                elif val_str in ctx.local_constants:
+                                    init_val = ctx.local_constants[val_str]
+                            if eq_idx > 0 and not init_var:
                                 init_var = itoks[eq_idx - 1]
                         except ValueError:
                             pass

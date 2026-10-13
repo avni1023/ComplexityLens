@@ -749,3 +749,141 @@ def test_rule_trace_fields_and_determinism():
     # Identical deterministic output across runs
     assert res1.to_dict() == res2.to_dict()
     assert res1.explanation == res2.explanation
+
+
+# ===========================================================================
+# 10. Audit Regression Tests (Decreasing Loops, Directions, Constructors)
+# ===========================================================================
+
+
+def test_decreasing_loop_regression():
+    """Decreasing loops from input symbol down to 0 are O(n); literal starts are O(1)."""
+    code_input = """
+    void solve(int n) {
+        for (int i = n; i > 0; --i) {}
+    }
+    """
+    res_in = analyze_source(code_input, function_name="solve")
+    assert res_in.taxonomy_label == "ON"
+    assert res_in.exactness == "STRUCTURAL"
+    assert ReasonCode.LINEAR_LOOP.value in res_in.reason_codes
+
+    code_ge = """
+    void solve(int n) {
+        for (int i = n; i >= 1; --i) {}
+    }
+    """
+    res_ge = analyze_source(code_ge, function_name="solve")
+    assert res_ge.taxonomy_label == "ON"
+    assert res_ge.exactness == "STRUCTURAL"
+
+    code_while = """
+    void solve(int n) {
+        while (n > 0) {
+            --n;
+        }
+    }
+    """
+    res_while = analyze_source(code_while, function_name="solve")
+    assert res_while.taxonomy_label == "ON"
+
+    code_literal = """
+    void solve() {
+        for (int i = 100; i > 0; --i) {}
+    }
+    """
+    res_lit = analyze_source(code_literal, function_name="solve")
+    assert res_lit.taxonomy_label == "O1"
+    assert res_lit.exactness == "STRUCTURAL"
+    assert ReasonCode.CONSTANT_BOUND_LOOP.value in res_lit.reason_codes
+
+
+def test_direction_compatibility_regression():
+    """Incompatible update and comparison directions yield UNKNOWN or O(1) for 0 executions."""
+    # Incompatible increasing with >
+    code_incomp_inc = """
+    void solve(int n) {
+        for (int i = 0; i > n; ++i) {}
+    }
+    """
+    res_inc = analyze_source(code_incomp_inc, function_name="solve")
+    assert res_inc.taxonomy_label == "UNKNOWN"
+    assert res_inc.exactness == "UNKNOWN"
+    assert ReasonCode.UNKNOWN_BOUND.value in res_inc.reason_codes
+
+    # Incompatible decreasing with <
+    code_incomp_dec = """
+    void solve(int n) {
+        for (int i = 0; i < n; --i) {}
+    }
+    """
+    res_dec = analyze_source(code_incomp_dec, function_name="solve")
+    assert res_dec.taxonomy_label == "UNKNOWN"
+    assert res_dec.exactness == "UNKNOWN"
+    assert ReasonCode.UNKNOWN_BOUND.value in res_dec.reason_codes
+
+    # Literal zero-execution loops
+    code_zero_inc = """
+    void solve() {
+        for (int i = 0; i > 10; ++i) {}
+    }
+    """
+    res_zero_inc = analyze_source(code_zero_inc, function_name="solve")
+    assert res_zero_inc.taxonomy_label == "O1"
+
+    code_zero_dec = """
+    void solve() {
+        for (int i = 10; i < 5; --i) {}
+    }
+    """
+    res_zero_dec = analyze_source(code_zero_dec, function_name="solve")
+    assert res_zero_dec.taxonomy_label == "O1"
+
+
+def test_container_constructor_regression():
+    """Default is O(1), input-sized is O(n), literal-sized is O(1), range is UNKNOWN."""
+    # Default construction
+    code_default = """
+    #include <vector>
+    void solve() {
+        std::vector<int> v;
+    }
+    """
+    res_def = analyze_source(code_default, function_name="solve")
+    assert res_def.taxonomy_label == "O1"
+    assert ReasonCode.CONSTANT_WORK.value in res_def.reason_codes
+
+    # Input-sized construction
+    code_sized = """
+    #include <vector>
+    void solve(int n) {
+        std::vector<int> v(n);
+    }
+    """
+    res_sized = analyze_source(code_sized, function_name="solve")
+    assert res_sized.taxonomy_label == "ON"
+    assert res_sized.exactness == "STRUCTURAL"
+    assert ReasonCode.LINEAR_LOOP.value in res_sized.reason_codes
+    assert any(entry.rule_id == "RULE_CONTAINER_CONSTRUCTOR" for entry in res_sized.rule_trace)
+
+    # Literal-sized construction
+    code_lit = """
+    #include <vector>
+    void solve() {
+        std::vector<int> v(10);
+    }
+    """
+    res_lit = analyze_source(code_lit, function_name="solve")
+    assert res_lit.taxonomy_label == "O1"
+
+    # Range construction yields UNKNOWN
+    code_range = """
+    #include <vector>
+    void solve(std::vector<int> a) {
+        std::vector<int> v(a.begin(), a.end());
+    }
+    """
+    res_range = analyze_source(code_range, function_name="solve")
+    assert res_range.taxonomy_label == "UNKNOWN"
+    assert ReasonCode.UNSUPPORTED_CALL.value in res_range.reason_codes
+

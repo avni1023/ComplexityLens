@@ -70,7 +70,12 @@ The engine classifies loops based on verifiable syntactic and semantic propertie
 
 ### A. Linear Loops ($O(n)$ or $O(1)$)
 - **Supported Updates**: `++`, `--`, `+= c`, `-= c`, where $c \ge 1$ is a nonzero literal.
-- **Supported Conditions**: `<`, `<=`, `>`, `>=`.
+- **Direction Compatibility**:
+  - Increasing updates (`++`, `+=`) must test an upper bound (`<`, `<=`). Contradictory comparison directions (`>`, `>=`) with an input symbol yield `UNKNOWN` with `UNKNOWN_BOUND` (or $O(1)$ `CONSTANT_BOUND_LOOP` if provably 0 executions).
+  - Decreasing updates (`--`, `-=`) must test a lower bound (`>`, `>=`). Contradictory comparison directions (`<`, `<=`) with an input symbol yield `UNKNOWN` with `UNKNOWN_BOUND` (or $O(1)$ `CONSTANT_BOUND_LOOP` if provably 0 executions).
+- **Reverse / Decreasing Loops**:
+  - Decreasing from an input symbol to a constant bound (e.g. `for (int i = n; i > 0; --i)` or `while (n > 0) { --n; }`) is justified as $O(n)$ linear work with `LINEAR_LOOP`.
+  - Decreasing between two compile-time constants (e.g. `for (int i = 100; i > 0; --i)`) is $O(1)$ `CONSTANT_BOUND_LOOP`.
 - **Unsupported**: Variable step sizes (`i += step`) and `!=` conditions yield `UNKNOWN` with `UNKNOWN_BOUND`.
 - **Bounds**: Literal bounds yield $O(1)$; input-size bounds yield $O(n)$.
 
@@ -117,9 +122,9 @@ The engine classifies loops based on verifiable syntactic and semantic propertie
 
 ---
 
-## 6. Constant-Cost Call Allowlist
+## 6. Constant-Cost Call Allowlist and Constructor Cost Model
 
-Every call inside analyzed code must be verified against the constant-cost allowlist:
+Every call inside analyzed code must be verified against the constant-cost allowlist or supported constructor model:
 
 | Construct | Cost | Notes / Assumption |
 | :--- | :--- | :--- |
@@ -130,11 +135,14 @@ Every call inside analyzed code must be verified against the constant-cost allow
 | `.push_back()`, `.emplace_back()` | $O(1)$ amortized | Assumption `AMORTIZED_CONSTANT_CALL` |
 | `operator[]` | $O(1)$ | Direct indexing on vector/array |
 | `std::min`, `std::max`, `std::abs`, `std::swap` | $O(1)$ | Standard value comparisons and swaps |
-| `vector()`, `string()`, `array()`, `pair()` | $O(1)$ | Default container constructors |
+| `vector()`, `string()`, `array()`, `pair()` (0 args) | $O(1)$ | Genuine default container construction |
+| `vector(c)`, `string(c)` (literal constant size) | $O(1)$ | Constant-sized container allocation |
+| `vector(n)`, `string(n)` (input-size symbol $n$) | $O(n)$ | Input-sized container construction (`LINEAR_LOOP`) |
 | Arithmetic operators (`+`, `-`, `*`, `/`, `%`) | $O(1)$ | Primitive arithmetic operations |
 
-**Strict Prohibition**:
-Any function call outside this allowlist yields `UNKNOWN` with reason code `UNSUPPORTED_CALL`. This includes user-defined functions and non-allowlisted STL algorithms (`std::sort`, `std::find`, `std::lower_bound`).
+**Strict Prohibition & Constructor Conservatism**:
+- Any container constructor with range iterators (e.g. `vector(first, last)`) or unanalyzable expressions yields `UNKNOWN` with `UNSUPPORTED_CALL`.
+- Any function call outside this allowlist yields `UNKNOWN` with reason code `UNSUPPORTED_CALL`. This includes user-defined functions and non-allowlisted STL algorithms (`std::sort`, `std::find`, `std::lower_bound`).
 
 ---
 
