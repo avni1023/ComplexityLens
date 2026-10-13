@@ -35,6 +35,7 @@ from complexity_lens.complexity.models import (
     RuleTraceEntry,
     TaxonomyLabel,
 )
+from complexity_lens.complexity.recursion import classify_recursion
 from complexity_lens.complexity.rules import (
     classify_loop,
     dominant,
@@ -373,9 +374,7 @@ class ComplexityEngine:
         else:
             non_rec_class = ComplexityClass.constant()
 
-        rec_class = ComplexityClass.unknown()
-        rec_exact = Exactness.UNKNOWN
-        rec_reasons = [ReasonCode.UNSUPPORTED_CONSTRUCT.value]
+        rec_class, rec_exact, rec_reasons = classify_recursion(func, non_rec_class)
 
         for r in rec_reasons:
             ctx.add_reason(r)

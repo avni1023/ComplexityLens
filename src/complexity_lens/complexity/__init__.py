@@ -26,6 +26,7 @@ from complexity_lens.complexity.models import (
     RuleTraceEntry,
     TaxonomyLabel,
 )
+from complexity_lens.complexity.recursion import classify_recursion
 from complexity_lens.complexity.rules import (
     classify_loop,
     compare_dominance,
@@ -71,4 +72,6 @@ __all__ = [
     "compute_sccs",
     "map_argument",
     "substitute_complexity",
+    # Recursion (Stage 3)
+    "classify_recursion",
 ]
