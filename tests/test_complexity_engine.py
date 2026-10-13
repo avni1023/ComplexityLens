@@ -212,12 +212,12 @@ def test_call_allowlist_push_back_amortized():
 
 
 def test_unsupported_calls_yield_unknown():
-    """Calls to user-defined functions and non-allowlisted STL yield UNKNOWN."""
-    # User-defined function call
+    """Calls to unsupported functions and non-allowlisted STL yield UNKNOWN."""
+    # User-defined function call with unsupported argument mapping
     code_user = """
-    void helper() {}
-    int main() {
-        helper();
+    void helper(int x) {}
+    int main(int n) {
+        helper(n * n);
         return 0;
     }
     """
