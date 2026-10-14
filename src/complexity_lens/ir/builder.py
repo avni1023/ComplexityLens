@@ -42,6 +42,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from complexity_lens.ir.container_classification import detect_container_kind
 from complexity_lens.ir.model import (
     BoundKind,
     BranchIR,
@@ -70,6 +71,7 @@ _STL_FUNCTION_MAP: dict[str, STLOperationKind] = {
     "sort": STLOperationKind.SORT,
     "stable_sort": STLOperationKind.SORT,
     "find": STLOperationKind.FIND,
+    "find_if": STLOperationKind.FIND,
     "count": STLOperationKind.COUNT,
     "binary_search": STLOperationKind.BINARY_SEARCH,
     "lower_bound": STLOperationKind.LOWER_BOUND,
@@ -659,6 +661,7 @@ class _IRBuilderContext:
         named_constants: set[str] | None = None,
         multiply_assigned: set[str] | None = None,
         cin_vars: set[str] | None = None,
+        initial_values: dict[str, int] | None = None,
     ) -> None:
         self.enclosing_func_name = enclosing_func_name
         self.param_names = param_names
@@ -666,6 +669,7 @@ class _IRBuilderContext:
         self.named_constants = named_constants or set()
         self.multiply_assigned = multiply_assigned or set()
         self.cin_vars = cin_vars or set()
+        self.initial_values = initial_values or {}
         self.counter = 0
 
     def next_id(self, prefix: str) -> str:
@@ -767,6 +771,9 @@ def _build_body_items(
                     if loop_var in ctx.local_constants:
                         init_val = ctx.local_constants[loop_var]
                         init_expr = str(init_val)
+                    elif loop_var in ctx.initial_values:
+                        init_val = ctx.initial_values[loop_var]
+                        init_expr = str(init_val)
 
             elif loop_kind == LoopKind.DO_WHILE:
                 c_list = child.children
@@ -787,6 +794,9 @@ def _build_body_items(
                     init_var = loop_var
                     if loop_var in ctx.local_constants:
                         init_val = ctx.local_constants[loop_var]
+                        init_expr = str(init_val)
+                    elif loop_var in ctx.initial_values:
+                        init_val = ctx.initial_values[loop_var]
                         init_expr = str(init_val)
 
             elif loop_kind == LoopKind.RANGE_FOR:
@@ -1079,6 +1089,7 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
         # Parameters
         parameters: list[tuple[str, str]] = []
         param_names: set[str] = set()
+        container_types: dict[str, str] = {}
         for p in f_node.children:
             if p.kind == "PARM_DECL":
                 p_type = p.type_spelling or "auto"
@@ -1086,10 +1097,14 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                 parameters.append((p_type, p_name))
                 if p_name:
                     param_names.add(p_name)
+                    ckind = detect_container_kind(p_type)
+                    if ckind:
+                        container_types[p_name] = ckind
 
         # Function-level variable analysis
         local_named_constants = set(top_level_named_constants)
         local_constants: dict[str, int] = {}
+        initial_values: dict[str, int] = {}
         multiply_assigned: set[str] = set()
         cin_vars: set[str] = set()
         assigned_counts: dict[str, int] = {}
@@ -1111,12 +1126,17 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                     pass
             if n.kind == "VAR_DECL" and n.spelling:
                 var_name = n.spelling
+                ckind = detect_container_kind(n.type_spelling or " ".join(toks))
+                if ckind:
+                    container_types[var_name] = ckind
                 if any(k in toks for k in ("const", "constexpr")):
                     local_named_constants.add(var_name)
                 elif "=" in toks:
                     eq_idx = toks.index("=")
                     if eq_idx + 1 < len(toks) and toks[eq_idx + 1].isdigit():
-                        local_constants[var_name] = int(toks[eq_idx + 1])
+                        val = int(toks[eq_idx + 1])
+                        local_constants[var_name] = val
+                        initial_values[var_name] = val
                         assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
                 else:
                     assigned_counts[var_name] = assigned_counts.get(var_name, 0)
@@ -1138,6 +1158,7 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
             named_constants=local_named_constants,
             multiply_assigned=multiply_assigned,
             cin_vars=cin_vars,
+            initial_values=initial_values,
         )
 
         # Walk body
@@ -1169,6 +1190,7 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
             named_constants=local_named_constants,
             cin_vars=cin_vars,
             multiply_assigned_vars=multiply_assigned,
+            container_types=container_types,
         )
         program.functions.append(function_ir)
 

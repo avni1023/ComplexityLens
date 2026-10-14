@@ -399,6 +399,7 @@ class FunctionIR:
     named_constants: set[str] = dataclasses.field(default_factory=set)
     cin_vars: set[str] = dataclasses.field(default_factory=set)
     multiply_assigned_vars: set[str] = dataclasses.field(default_factory=set)
+    container_types: dict[str, str] = dataclasses.field(default_factory=dict)
 
     def all_loops(self) -> list[LoopIR]:
         res: list[LoopIR] = []
