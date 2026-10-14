@@ -1,0 +1,12 @@
+family_idea: "Naive recursive branching with 2 or more self-calls per step."
+label: "OEXP"
+label_rationale: "Recurrences with >= 2 self-calls on decremented arguments (e.g. T(n) = T(n-1) + T(n-2) + O(1)) have recursion trees of depth n with 2^n leaves, yielding O(2^n)."
+tag: "easy"
+expected_parse: "valid"
+programs:
+  - "exp_fibonacci_naive"
+  - "exp_binary_recursion"
+  - "exp_subset_sum_recursive"
+  - "exp_tribonacci_naive"
+assumptions:
+  - "Each recursive invocation branches into multiple sub-calls without memoization or caching."

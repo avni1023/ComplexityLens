@@ -1,0 +1,12 @@
+family_idea: "Single linear pass over an array or range up to n."
+label: "ON"
+label_rationale: "A single loop iterating n times with constant work per iteration has worst-case time complexity O(n)."
+tag: "easy"
+expected_parse: "valid"
+programs:
+  - "linear_for_accumulate"
+  - "linear_while_scan"
+  - "linear_std_find"
+  - "linear_vector_count"
+assumptions:
+  - "Loop visits each element up to n exactly once, doing O(1) work per iteration."

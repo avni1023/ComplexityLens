@@ -1,0 +1,21 @@
+family_idea: "Syntactically valid programs whose loop step or recursion branching is governed by runtime data values or open termination conjectures."
+label: "UNKNOWN"
+label_rationale: "The execution step count cannot be determined statically because it depends on runtime data values or an unsolved mathematical termination property."
+tag: "rule_hard"
+expected_parse: "valid"
+programs:
+  - "unknown_collatz_termination"
+  - "unknown_data_dependent_jump"
+  - "unknown_irregular_recurse"
+assumptions:
+  - "Runtime values are unpredictable at compile-time; termination or trip counts are data-dependent or open."
+program_annotations:
+  unknown_collatz_termination:
+    unknown_reason: "termination"
+    explanation: "Loop trip count is governed by the 3n+1 Collatz conjecture, whose termination step count has no known closed-form static bound."
+  unknown_data_dependent_jump:
+    unknown_reason: "data_dependent"
+    explanation: "Loop index increment is retrieved from runtime array contents arr[i], making total loop iterations strictly dependent on input data."
+  unknown_irregular_recurse:
+    unknown_reason: "irregular_recursion"
+    explanation: "Recursion step alternates unpredictably between subtractive and divisive operations based on input divisibility, defying standard static recurrence templates."

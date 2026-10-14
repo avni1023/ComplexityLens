@@ -1,0 +1,12 @@
+family_idea: "Nested quadratic behaviors where inner work is hidden in helper function loops or STL linear searches."
+label: "ON2"
+label_rationale: "An outer loop running n times calling a helper with an n-iteration loop or calling std::find/std::count inside the loop yields worst-case time complexity O(n^2)."
+tag: "rule_hard"
+expected_parse: "valid"
+programs:
+  - "hard_helper_loop_in_loop"
+  - "hard_stl_find_in_loop"
+  - "hard_stl_count_in_loop"
+  - "hard_nested_intermediate_bound"
+assumptions:
+  - "The helper loop or STL scan inspects up to n elements on each of the n outer iterations."

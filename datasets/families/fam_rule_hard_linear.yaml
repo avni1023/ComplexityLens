@@ -1,0 +1,12 @@
+family_idea: "Single-loop linear algorithms with intermediate bound variables, constant variable increments, or worst-case early exits."
+label: "ON"
+label_rationale: "In the worst case, intermediate bounds (e.g. n/2) and constant steps (e.g. step=2) scale linearly with n, resulting in O(n) worst-case time complexity."
+tag: "rule_hard"
+expected_parse: "valid"
+programs:
+  - "hard_intermediate_bound"
+  - "hard_while_constant_step"
+  - "hard_early_exit_worst"
+  - "hard_intermediate_offset_bound"
+assumptions:
+  - "Early exit does not fire in the worst case (e.g. target is absent or at the very end). Intermediate bounds scale proportionally to input size n."
