@@ -12,6 +12,13 @@ from complexity_lens.complexity import (
     analyze_file,
     analyze_source,
 )
+from complexity_lens.dataset import (
+    FamilyMetadata,
+    ProgramRecord,
+    compute_source_sha256,
+    generate_dataset_report,
+    load_dataset,
+)
 from complexity_lens.features import (
     FEATURE_NAMES,
     FEATURE_SCHEMA_VERSION,
@@ -27,13 +34,18 @@ __all__ = [
     "Exactness",
     "FEATURE_NAMES",
     "FEATURE_SCHEMA_VERSION",
+    "FamilyMetadata",
     "FeatureVector",
     "FunctionSelectionError",
+    "ProgramRecord",
     "ReasonCode",
     "RuleTraceEntry",
     "TaxonomyLabel",
     "analyze_complexity",
     "analyze_file",
     "analyze_source",
+    "compute_source_sha256",
     "extract_features",
+    "generate_dataset_report",
+    "load_dataset",
 ]
