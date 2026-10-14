@@ -19,6 +19,7 @@ import pytest
 
 from complexity_lens.complexity import (
     ComplexityClass,
+    Exactness,
     FunctionSelectionError,
     ReasonCode,
     TaxonomyLabel,
@@ -886,4 +887,220 @@ def test_container_constructor_regression():
     res_range = analyze_source(code_range, function_name="solve")
     assert res_range.taxonomy_label == "UNKNOWN"
     assert ReasonCode.UNSUPPORTED_CALL.value in res_range.reason_codes
+
+
+def test_unified_loop_classifier_consistency():
+    """Verify consistency across loop categories between engine and feature extractor."""
+    from complexity_lens.features import extract_features
+    from complexity_lens.ir.loop_classification import (
+        LoopBoundCategory,
+        classify_loop_structural,
+    )
+
+    cases = [
+        # 1. Linear loop
+        (
+            "void f(int n) { for (int i = 0; i < n; ++i) {} }",
+            LoopBoundCategory.LINEAR_BOUND,
+            ComplexityClass.linear(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.LINEAR_LOOP.value],
+            "n",
+            "ON",
+            "linear",
+        ),
+        # 2. Constant loop
+        (
+            "void f() { for (int i = 0; i < 10; ++i) {} }",
+            LoopBoundCategory.CONST_BOUND,
+            ComplexityClass.constant(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.CONSTANT_BOUND_LOOP.value],
+            None,
+            "O1",
+            "const",
+        ),
+        # 3. Logarithmic update (input-sized)
+        (
+            "void f(int n) { for (int i = 1; i < n; i *= 2) {} }",
+            LoopBoundCategory.LOG_UPDATE,
+            ComplexityClass.logarithmic(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.LOGARITHMIC_UPDATE.value],
+            "n",
+            "OLOGN",
+            "log",
+        ),
+        # 4. Literal-bound logarithmic update
+        (
+            "void f() { for (int i = 1; i < 100; i *= 2) {} }",
+            LoopBoundCategory.LOG_UPDATE,
+            ComplexityClass.constant(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.CONSTANT_BOUND_LOOP.value],
+            None,
+            "O1",
+            "log",
+        ),
+        # 5. Named-constant logarithmic update
+        (
+            "const int N = 1000; void f() { for (int i = 1; i < N; i *= 2) {} }",
+            LoopBoundCategory.LOG_UPDATE,
+            ComplexityClass.logarithmic(),
+            Exactness.STRUCTURAL,
+            [
+                ReasonCode.LOGARITHMIC_UPDATE.value,
+                ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value,
+            ],
+            "N",
+            "OLOGN",
+            "log",
+        ),
+        # 6. Named-constant linear loop
+        (
+            "const int N = 1000; void f() { for (int i = 0; i < N; ++i) {} }",
+            LoopBoundCategory.LINEAR_BOUND,
+            ComplexityClass.linear(),
+            Exactness.STRUCTURAL,
+            [
+                ReasonCode.LINEAR_LOOP.value,
+                ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value,
+            ],
+            "N",
+            "ON",
+            "linear",
+        ),
+        # 7. Nested dependent bound
+        (
+            "void f(int n) { for (int i = 0; i < n; ++i) { for (int j = 0; j < i; ++j) {} } }",
+            LoopBoundCategory.DEPENDENT_BOUND,
+            ComplexityClass.unknown(),
+            Exactness.UNKNOWN,
+            [ReasonCode.DEPENDENT_BOUND.value],
+            None,
+            "UNKNOWN",
+            "dependent",
+        ),
+        # 8. Unsupported != comparison
+        (
+            "void f(int n) { for (int i = 0; i != n; ++i) {} }",
+            LoopBoundCategory.UNKNOWN_BOUND,
+            ComplexityClass.unknown(),
+            Exactness.UNKNOWN,
+            [ReasonCode.UNKNOWN_BOUND.value],
+            None,
+            "UNKNOWN",
+            "unknown",
+        ),
+        # 9. Reverse input-sized loop
+        (
+            "void f(int n) { for (int i = n; i > 0; --i) {} }",
+            LoopBoundCategory.LINEAR_BOUND,
+            ComplexityClass.linear(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.LINEAR_LOOP.value],
+            "n",
+            "ON",
+            "linear",
+        ),
+        # 10. Incompatible direction
+        (
+            "void f(int n) { for (int i = 0; i > n; ++i) {} }",
+            LoopBoundCategory.UNKNOWN_BOUND,
+            ComplexityClass.unknown(),
+            Exactness.UNKNOWN,
+            [ReasonCode.UNKNOWN_BOUND.value],
+            None,
+            "UNKNOWN",
+            "unknown",
+        ),
+        # 11. Loop variable modified inside body
+        (
+            "void f(int n) { for (int i = 0; i < n; ++i) { i += 2; } }",
+            LoopBoundCategory.UNKNOWN_BOUND,
+            ComplexityClass.unknown(),
+            Exactness.UNKNOWN,
+            [ReasonCode.LOOP_VAR_MODIFIED.value],
+            None,
+            "UNKNOWN",
+            "unknown",
+        ),
+        # 12. Range-for container loop
+        (
+            "#include <vector>\nvoid f(std::vector<int>& v) { for (auto x : v) {} }",
+            LoopBoundCategory.LINEAR_BOUND,
+            ComplexityClass.linear(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.LINEAR_LOOP.value],
+            "v",
+            "ON",
+            "linear",
+        ),
+        # 13. Range-for fixed array loop
+        (
+            "#include <array>\nvoid f() { std::array<int, 5> arr; for (auto x : arr) {} }",
+            LoopBoundCategory.CONST_BOUND,
+            ComplexityClass.constant(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.CONSTANT_BOUND_LOOP.value],
+            None,
+            "O1",
+            "const",
+        ),
+    ]
+
+    for (
+        code,
+        exp_cat,
+        exp_class,
+        exp_exact,
+        exp_reasons,
+        exp_sym,
+        exp_tax,
+        exp_feat_kind,
+    ) in cases:
+        prog = build_ir_from_source(code)
+        fn = prog.functions[0]
+        lp = fn.all_loops()[-1]
+        param_names = {p[1] for p in fn.parameters if p[1]}
+
+        # 1. Structural classifier (explicit category comparison)
+        struct_res = classify_loop_structural(
+            lp,
+            local_constants=fn.local_constants,
+            named_constants=fn.named_constants,
+            cin_vars=fn.cin_vars,
+            param_names=param_names,
+        )
+        assert struct_res.category == exp_cat
+
+        # 2. Engine classify_loop contract
+        iter_class, exactness, reasons, sym = classify_loop(
+            lp,
+            local_constants=fn.local_constants,
+            named_constants=fn.named_constants,
+            cin_vars=fn.cin_vars,
+            param_names=param_names,
+        )
+        assert iter_class == exp_class
+        assert exactness == exp_exact
+        assert reasons == exp_reasons
+        assert sym == exp_sym
+
+        # 3. Full engine analysis result
+        res = analyze_source(code)
+        assert res.taxonomy_label == exp_tax
+
+        # 4. Feature extractor
+        feat = extract_features(prog)
+        if exp_feat_kind == "linear":
+            assert feat.n_loops_linear_bound >= 1
+        elif exp_feat_kind == "const":
+            assert feat.n_loops_const_bound >= 1
+        elif exp_feat_kind == "log":
+            assert feat.n_loops_log_update >= 1
+        elif exp_feat_kind == "dependent":
+            assert feat.n_dependent_bound_loops >= 1
+        elif exp_feat_kind == "unknown":
+            assert feat.n_loops_unknown_bound >= 1
 

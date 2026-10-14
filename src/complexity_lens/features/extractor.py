@@ -262,13 +262,14 @@ def extract_features(
             n_nested_loop_pairs += len(descendants)
 
             # Bound classification
-            cat = classify_loop_structural(
+            struct_res = classify_loop_structural(
                 lp,
                 local_constants=f.local_constants,
                 named_constants=f.named_constants,
                 cin_vars=f.cin_vars,
                 param_names=f_param_names,
             )
+            cat = struct_res.category
             if cat == LoopBoundCategory.LINEAR_BOUND:
                 n_loops_linear_bound += 1
             elif cat == LoopBoundCategory.CONST_BOUND:

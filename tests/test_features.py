@@ -332,6 +332,26 @@ def test_12_sequential_calls_and_functions_counted_once():
     assert feat.n_loops == 1  # helper's loop counted once in program
 
 
+def test_12b_helper_called_inside_and_outside_loop():
+    """Helper called at loop depth 0 and depth 1 calculates max_depth=2 without double-counting."""
+    code = """
+    void helper(int n) {
+        for (int i = 0; i < n; ++i) {}
+    }
+    void main_func(int n) {
+        helper(n);
+        for (int j = 0; j < n; ++j) {
+            helper(n);
+        }
+    }
+    """
+    prog = build_ir_from_source(code)
+    feat = extract_features(prog)
+    assert feat.n_user_calls == 2
+    assert feat.n_loops == 2  # helper's loop + main_func's loop, each counted once
+    assert feat.max_loop_depth == 2
+
+
 def test_13_helper_with_loop_increases_max_loop_depth():
     """Loop at depth 1 calling helper with loop at depth 1 yields max_loop_depth=2."""
     code = """
@@ -365,7 +385,23 @@ def test_14_recursive_cycles_cannot_cause_infinite_traversal():
     prog = build_ir_from_source(code)
     feat = extract_features(prog)
     assert feat.has_recursion == 1
-    assert feat.max_loop_depth >= 1
+    assert feat.max_loop_depth == 1
+
+
+def test_14b_direct_recursion_with_loop_terminates_at_intrinsic_depth():
+    """Self-recursive function with a loop terminates deterministically with max_loop_depth=1."""
+    code = """
+    void solve(int n) {
+        for (int i = 0; i < n; ++i) {}
+        if (n > 0) {
+            solve(n - 1);
+        }
+    }
+    """
+    prog = build_ir_from_source(code)
+    feat = extract_features(prog)
+    assert feat.has_recursion == 1
+    assert feat.max_loop_depth == 1
 
 
 # ===========================================================================
