@@ -11,14 +11,16 @@ Implements:
 
 from __future__ import annotations
 
-import re
-
 from complexity_lens.complexity.models import (
     ComplexityClass,
     Exactness,
     ReasonCode,
 )
-from complexity_lens.ir.model import BoundKind, LoopIR, LoopKind, UpdateKind
+from complexity_lens.ir.loop_classification import (
+    LoopBoundCategory,
+    classify_loop_structural,
+)
+from complexity_lens.ir.model import LoopIR
 
 # Allowlisted call names that are known O(1)
 _ALLOWLISTED_CALLS = {
@@ -183,17 +185,56 @@ def classify_loop(
     -------
     (iteration_class, exactness, reason_codes, input_symbol)
     """
-    # 1. Loop variable or bound variable modified in loop body -> UNKNOWN
-    if loop.loop_var_modified:
+    struct_res = classify_loop_structural(
+        loop,
+        local_constants=local_constants,
+        named_constants=named_constants,
+        cin_vars=cin_vars,
+        param_names=param_names,
+    )
+
+    reason = struct_res.reason
+    input_sym = struct_res.input_symbol
+    is_named_c = struct_res.is_named_constant
+
+    if struct_res.category == LoopBoundCategory.LINEAR_BOUND:
+        reasons = [ReasonCode.LINEAR_LOOP.value]
+        if is_named_c:
+            reasons.append(ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value)
         return (
-            ComplexityClass.unknown(),
-            Exactness.UNKNOWN,
-            [ReasonCode.LOOP_VAR_MODIFIED.value],
+            ComplexityClass.linear(),
+            Exactness.STRUCTURAL,
+            reasons,
+            input_sym,
+        )
+
+    if struct_res.category == LoopBoundCategory.CONST_BOUND:
+        return (
+            ComplexityClass.constant(),
+            Exactness.STRUCTURAL,
+            [ReasonCode.CONSTANT_BOUND_LOOP.value],
             None,
         )
 
-    # 2. Triangular / Dependent bound -> UNKNOWN with DEPENDENT_BOUND
-    if loop.is_dependent_bound or loop.bound.kind == BoundKind.DEPENDENT:
+    if struct_res.category == LoopBoundCategory.LOG_UPDATE:
+        if reason == ReasonCode.CONSTANT_BOUND_LOOP.value:
+            return (
+                ComplexityClass.constant(),
+                Exactness.STRUCTURAL,
+                [ReasonCode.CONSTANT_BOUND_LOOP.value],
+                None,
+            )
+        reasons = [ReasonCode.LOGARITHMIC_UPDATE.value]
+        if is_named_c:
+            reasons.append(ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value)
+        return (
+            ComplexityClass.logarithmic(),
+            Exactness.STRUCTURAL,
+            reasons,
+            input_sym,
+        )
+
+    if struct_res.category == LoopBoundCategory.DEPENDENT_BOUND:
         return (
             ComplexityClass.unknown(),
             Exactness.UNKNOWN,
@@ -201,392 +242,15 @@ def classify_loop(
             None,
         )
 
-    # 3. Unsupported comparison operator ('!=') -> UNKNOWN
-    if loop.bound.comparison_op == "!=":
-        return (
-            ComplexityClass.unknown(),
-            Exactness.UNKNOWN,
-            [ReasonCode.UNKNOWN_BOUND.value],
-            None,
-        )
-
-    # 4. Range-for loops
-    if loop.kind == LoopKind.RANGE_FOR:
-        if loop.is_fixed_size_array:
-            return (
-                ComplexityClass.constant(),
-                Exactness.STRUCTURAL,
-                [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                None,
-            )
-        if loop.container_name and (
-            loop.container_name in param_names or loop.container_name in cin_vars
-        ):
-            return (
-                ComplexityClass.linear(),
-                Exactness.STRUCTURAL,
-                [ReasonCode.LINEAR_LOOP.value],
-                loop.container_name,
-            )
-        return (
-            ComplexityClass.unknown(),
-            Exactness.UNKNOWN,
-            [ReasonCode.UNKNOWN_BOUND.value],
-            None,
-        )
-
-    # 5. Doubling loops (i *= c, i = i * c, i += i with literal c >= 2)
-    is_mult = (loop.update.kind == UpdateKind.MULTIPLICATIVE)
-    is_doubling_step = (loop.update.step_op in ("*=", ">>=")) or (
-        loop.update.step_expr and "*" in loop.update.step_expr
+    # UNKNOWN_BOUND
+    reason_code = (
+        ReasonCode.LOOP_VAR_MODIFIED.value
+        if reason == ReasonCode.LOOP_VAR_MODIFIED.value
+        else ReasonCode.UNKNOWN_BOUND.value
     )
-    is_halving_step = (loop.update.step_op == "/=") or (
-        loop.update.step_expr and "/" in loop.update.step_expr
-    )
-
-    if is_mult and is_doubling_step:
-        # Require supported condition (< or <=)
-        if loop.bound.comparison_op not in ("<", "<="):
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-        # Require initialization provably at least 1
-        if loop.init_val is None:
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-        if loop.init_val == 0:
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-
-        # Check bound
-        b_expr = loop.bound.bound_expr
-        if b_expr:
-            if b_expr.isdigit() or (b_expr in local_constants):
-                return (
-                    ComplexityClass.constant(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                    None,
-                )
-            if b_expr in named_constants:
-                return (
-                    ComplexityClass.logarithmic(),
-                    Exactness.STRUCTURAL,
-                    [
-                        ReasonCode.LOGARITHMIC_UPDATE.value,
-                        ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value,
-                    ],
-                    b_expr,
-                )
-            if (
-                b_expr in param_names
-                or b_expr in cin_vars
-                or loop.bound.kind == BoundKind.LINEAR_INPUT
-            ):
-                return (
-                    ComplexityClass.logarithmic(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.LOGARITHMIC_UPDATE.value],
-                    b_expr,
-                )
-
-        return (
-            ComplexityClass.unknown(),
-            Exactness.UNKNOWN,
-            [ReasonCode.UNKNOWN_BOUND.value],
-            None,
-        )
-
-    # 6. Halving loops (n /= c, i /= c with literal c >= 2)
-    if is_mult and is_halving_step:
-        # Require supported termination comparison (> 0, >= 1, > 1)
-        comp = loop.bound.comparison_op
-        if comp not in (">", ">="):
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-        target = loop.bound.variable or loop.update.variable
-        if target:
-            if target in param_names or target in cin_vars:
-                return (
-                    ComplexityClass.logarithmic(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.LOGARITHMIC_UPDATE.value],
-                    target,
-                )
-            if target in named_constants:
-                return (
-                    ComplexityClass.logarithmic(),
-                    Exactness.STRUCTURAL,
-                    [
-                        ReasonCode.LOGARITHMIC_UPDATE.value,
-                        ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value,
-                    ],
-                    target,
-                )
-            if target in local_constants:
-                return (
-                    ComplexityClass.constant(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                    None,
-                )
-
-        return (
-            ComplexityClass.unknown(),
-            Exactness.UNKNOWN,
-            [ReasonCode.UNKNOWN_BOUND.value],
-            None,
-        )
-
-    # 7. Linear loops (++i, --i, += c, -= c with literal nonzero c)
-    if loop.update.kind == UpdateKind.ADDITIVE:
-        is_inc = loop.update.step_op in ("++", "+=")
-        is_dec = loop.update.step_op in ("--", "-=")
-
-        if not is_inc and not is_dec:
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-
-        comp = loop.bound.comparison_op
-        if comp not in ("<", "<=", ">", ">="):
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-
-        b_expr = loop.bound.bound_expr or ""
-        init_expr = loop.init_expr or ""
-
-        def _is_const(expr: str, val: int | None) -> bool:
-            if val is not None:
-                return True
-            if not expr:
-                return False
-            return expr.isdigit() or (expr in local_constants)
-
-        def _find_symbol(expr: str) -> str | None:
-            if not expr:
-                return None
-            if expr in param_names or expr in cin_vars:
-                return expr
-            for p in param_names:
-                if re.search(rf"\b{re.escape(p)}\b", expr):
-                    return p
-            for c in cin_vars:
-                if re.search(rf"\b{re.escape(c)}\b", expr):
-                    return c
-            return None
-
-        def _find_named_const(expr: str) -> str | None:
-            if not expr:
-                return None
-            if expr in named_constants:
-                return expr
-            for nc in named_constants:
-                if re.search(rf"\b{re.escape(nc)}\b", expr):
-                    return nc
-            return None
-
-        # --- A. Increasing loops (++i, += c) ---
-        if is_inc:
-            if comp in (">", ">="):
-                # Incompatible direction for increasing loop
-                if _is_const(b_expr, None) and _is_const(init_expr, loop.init_val):
-                    init_v = (
-                        loop.init_val
-                        if loop.init_val is not None
-                        else (
-                            int(init_expr)
-                            if init_expr.isdigit()
-                            else local_constants.get(init_expr)
-                        )
-                    )
-                    bound_v = (
-                        int(b_expr)
-                        if b_expr.isdigit()
-                        else local_constants.get(b_expr)
-                    )
-                    if init_v is not None and bound_v is not None:
-                        if (comp == ">" and init_v <= bound_v) or (
-                            comp == ">=" and init_v < bound_v
-                        ):
-                            return (
-                                ComplexityClass.constant(),
-                                Exactness.STRUCTURAL,
-                                [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                                None,
-                            )
-                return (
-                    ComplexityClass.unknown(),
-                    Exactness.UNKNOWN,
-                    [ReasonCode.UNKNOWN_BOUND.value],
-                    None,
-                )
-
-            sym = _find_symbol(b_expr)
-            if sym:
-                return (
-                    ComplexityClass.linear(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.LINEAR_LOOP.value],
-                    sym,
-                )
-
-            named_c = _find_named_const(b_expr)
-            if named_c:
-                return (
-                    ComplexityClass.linear(),
-                    Exactness.STRUCTURAL,
-                    [
-                        ReasonCode.LINEAR_LOOP.value,
-                        ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value,
-                    ],
-                    named_c,
-                )
-
-            if _is_const(b_expr, None):
-                init_sym = _find_symbol(init_expr)
-                if init_sym:
-                    return (
-                        ComplexityClass.linear(),
-                        Exactness.STRUCTURAL,
-                        [ReasonCode.LINEAR_LOOP.value],
-                        init_sym,
-                    )
-                return (
-                    ComplexityClass.constant(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                    None,
-                )
-
-            if loop.bound.kind == BoundKind.LINEAR_INPUT:
-                return (
-                    ComplexityClass.linear(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.LINEAR_LOOP.value],
-                    b_expr or None,
-                )
-
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-
-        # --- B. Decreasing loops (--i, -= c) ---
-        if is_dec:
-            if comp in ("<", "<="):
-                # Incompatible direction for decreasing loop
-                if _is_const(b_expr, None) and _is_const(init_expr, loop.init_val):
-                    init_v = (
-                        loop.init_val
-                        if loop.init_val is not None
-                        else (
-                            int(init_expr)
-                            if init_expr.isdigit()
-                            else local_constants.get(init_expr)
-                        )
-                    )
-                    bound_v = (
-                        int(b_expr)
-                        if b_expr.isdigit()
-                        else local_constants.get(b_expr)
-                    )
-                    if init_v is not None and bound_v is not None:
-                        if (comp == "<" and init_v >= bound_v) or (
-                            comp == "<=" and init_v > bound_v
-                        ):
-                            return (
-                                ComplexityClass.constant(),
-                                Exactness.STRUCTURAL,
-                                [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                                None,
-                            )
-                return (
-                    ComplexityClass.unknown(),
-                    Exactness.UNKNOWN,
-                    [ReasonCode.UNKNOWN_BOUND.value],
-                    None,
-                )
-
-            start_expr = (
-                init_expr
-                or loop.bound.variable
-                or loop.update.variable
-                or ""
-            )
-
-            start_sym = _find_symbol(start_expr)
-            if start_sym:
-                return (
-                    ComplexityClass.linear(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.LINEAR_LOOP.value],
-                    start_sym,
-                )
-
-            start_named = _find_named_const(start_expr)
-            if start_named:
-                return (
-                    ComplexityClass.linear(),
-                    Exactness.STRUCTURAL,
-                    [
-                        ReasonCode.LINEAR_LOOP.value,
-                        ReasonCode.NAMED_CONSTANT_AS_INPUT_SIZE.value,
-                    ],
-                    start_named,
-                )
-
-            bound_sym = _find_symbol(b_expr)
-            if bound_sym:
-                return (
-                    ComplexityClass.linear(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.LINEAR_LOOP.value],
-                    bound_sym,
-                )
-
-            if _is_const(start_expr, loop.init_val) and _is_const(b_expr, None):
-                return (
-                    ComplexityClass.constant(),
-                    Exactness.STRUCTURAL,
-                    [ReasonCode.CONSTANT_BOUND_LOOP.value],
-                    None,
-                )
-
-            return (
-                ComplexityClass.unknown(),
-                Exactness.UNKNOWN,
-                [ReasonCode.UNKNOWN_BOUND.value],
-                None,
-            )
-
     return (
         ComplexityClass.unknown(),
         Exactness.UNKNOWN,
-        [ReasonCode.UNKNOWN_BOUND.value],
+        [reason_code],
         None,
     )

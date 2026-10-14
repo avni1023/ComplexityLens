@@ -25,7 +25,18 @@
   - Added support for `DO_WHILE` and `RANGE_FOR` loop kinds, and container type provenance tracking
   - Documented supported and rejected constructs in `docs/SUPPORTED_SUBSET.md` and ADR-004 in `docs/DECISIONS.md`
   - 101 validation tests and 185 total unit/regression tests passing; zero lint errors
-- [ ] **Day 4: Static Complexity Rules (Loops & Polynomial Algebra)**
-- [ ] **Day 5: Static Rules (STL & Recursion Templates)**
-- [ ] **Day 6: Feature Extraction (26 features + leakage check)**
+- [x] **Day 4: Static Complexity Rules (Loops & Polynomial Algebra)**
+  - Polynomial and logarithmic degree representation $(p, q) \iff O(n^p \cdot (\log n)^q)$ plus EXP and UNKNOWN
+  - Additive, multiplicative, and dominance composition algebra with commutativity and associativity
+  - Loop classification for constant, linear, doubling, and halving loops
+- [x] **Day 5: Static Rules (STL & Recursion Templates)**
+  - STL operations classification for sort, linear search, binary search, and container cost models
+  - Non-recursive user-function substitution with Tarjan SCC cycle detection and call-depth cap
+  - Conservative recursion template analysis (T1–T4)
+- [x] **Day 6: Feature Extraction (26 features + leakage check)**
+  - Authoritative 26-feature schema in `docs/FEATURES.md`
+  - Canonical immutable `FeatureVector` with `names`, `values`, `to_list()`, `to_dict()`, and version `"1.0"`
+  - Modular shared structural helpers (`loop_classification.py`, `entry_point.py`, `container_classification.py`)
+  - No ML dependencies and no imports of top-level complexity engine analysis
+  - 28 new tests in `tests/test_features.py` (346 total tests passing)
 - [ ] **Day 7: Dataset Tooling & Week 1 Gate**

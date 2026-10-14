@@ -122,6 +122,23 @@ Day 5 extended the engine across three major stages:
 
 ---
 
+### Day 6 — Deterministic Structural Feature Extraction
+* **What was built:**
+  - Authoritative 26-feature schema in `docs/FEATURES.md` and `src/complexity_lens/features/`:
+    - **11 Loop features:** `n_loops`, `max_loop_depth` (with interprocedural propagation through non-recursive user calls), `n_sequential_top_loops`, `n_nested_loop_pairs`, `n_for`, `n_while`, `n_loops_linear_bound`, `n_loops_const_bound`, `n_loops_log_update`, `n_dependent_bound_loops`, `n_loops_unknown_bound`.
+    - **5 Recursion features:** `has_recursion`, `n_recursive_call_sites`, `shrink_minus_const`, `shrink_divide`, `shrink_other`.
+    - **6 Calls and Operations features:** `n_user_calls`, `n_sort_calls`, `n_linear_search_calls`, `n_binary_search_calls`, `n_hash_ops`, `n_ordered_container_ops`.
+    - **4 Other features:** `n_container_ops_in_loops`, `has_early_exit_in_loop`, `n_input_dependent_ops`, `n_unsupported_constructs`.
+  - Canonical immutable `FeatureVector` with schema version `"1.0"`, preserving canonical order across `to_list()` and `to_dict()`.
+  - Decoupled structural helpers: `loop_classification.py`, `entry_point.py`, and `container_classification.py` isolate structural inspection from engine predictions.
+  - Leakage prevention: labels, family IDs, sample IDs, filenames, and split metadata are forbidden and excluded from the schema.
+  - Zero ML library dependencies.
+* **Why was it needed? (Viva Concept)**
+  - Prepares the tabular representation needed by machine learning baselines (Days 10–12) and hybrid gates (Day 13).
+  - Isolating feature extraction from engine predictions prevents data leakage and ensures features remain objective mathematical and structural measurements of the program AST.
+
+---
+
 ## Quick Viva Questions & Answers
 
 **Q1: Why does ComplexityLens perform static analysis instead of just running the program and measuring time?**  
@@ -138,3 +155,9 @@ Day 5 extended the engine across three major stages:
 
 **Q5: How does the engine prevent infinite loops during function substitution?**  
 *Answer:* We compute Strongly Connected Components (SCCs) using Tarjan's algorithm to detect cycles, and we enforce a strict recursion depth cap (`MAX_CALL_DEPTH = 20`). If a cycle or depth limit is encountered, the engine terminates and returns `UNKNOWN`.
+
+**Q6: What is the 26-feature vector in Day 6 and why does it not include static engine predictions or ground truth labels?**  
+*Answer:* The feature vector extracts 26 purely structural and deterministic properties directly from the IR (loops, nesting pairs, recursion sites, call kinds, container operations). Engine predictions and labels are strictly excluded to avoid data leakage; machine learning models trained on these features must learn patterns independently without circular self-fulfilling inputs.
+
+**Q7: How is `max_loop_depth` computed when a loop in function A calls function B?**  
+*Answer:* A loop at depth $d$ calling a non-recursive callee B with maximum intrinsic loop depth $k$ contributes a candidate depth of $d + k$. To prevent infinite traversal on recursive functions, recursive cycles contribute 0 additional depth across call sites and traversal does not follow cyclic calls.

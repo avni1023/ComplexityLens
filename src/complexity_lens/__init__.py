@@ -12,6 +12,12 @@ from complexity_lens.complexity import (
     analyze_file,
     analyze_source,
 )
+from complexity_lens.features import (
+    FEATURE_NAMES,
+    FEATURE_SCHEMA_VERSION,
+    FeatureVector,
+    extract_features,
+)
 
 __version__ = "0.1.0"
 
@@ -19,6 +25,9 @@ __all__ = [
     "AnalysisResult",
     "ComplexityClass",
     "Exactness",
+    "FEATURE_NAMES",
+    "FEATURE_SCHEMA_VERSION",
+    "FeatureVector",
     "FunctionSelectionError",
     "ReasonCode",
     "RuleTraceEntry",
@@ -26,4 +35,5 @@ __all__ = [
     "analyze_complexity",
     "analyze_file",
     "analyze_source",
+    "extract_features",
 ]
