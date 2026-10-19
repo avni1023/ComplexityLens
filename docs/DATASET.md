@@ -2,11 +2,11 @@
 
 ## 1. Ground Truth Integrity and Labels-Only Commit
 
-To guarantee that ground-truth labels are established independently of the ComplexityLens static analysis engine and machine learning models, all dataset programs, family metadata, expected labels, and hand-derived rationales are authored and committed in a strictly isolated **labels-only commit** before running any engine predictions.
+To establish an independent ground truth for the ComplexityLens benchmark, all dataset programs, family metadata, expected labels, and hand-derived rationales were authored and committed in a strictly separated **labels-only commit** (Phase A) prior to implementing dataset evaluation tooling and agreement diagnostics (Phase B).
 
-- **Labels-only commit hash:** `39a12a7e926cb038f2f96bf276d0057de1501972` (initial; amended in step 5)
-- **Confirmation:** No dataset program was analyzed by the ComplexityLens analysis engine prior to establishing this labels-only ground truth.
-- **Integrity Rule:** Re-check the rationale; never edit a label to match the engine. If a rationale defect is discovered, it must be documented transparently in a subsequent commit.
+- **Phase A Labels-Only Commit Hash:** `f23df075370cbadd5ac7dc7efbd254214fa0552f`
+- **Provenance Note:** Because a Git commit's hash is computed over the tree containing all tracked file contents, a commit cannot contain its own final hash in a tracked file. The exact Phase A commit hash is therefore recorded in subsequent documentation updates.
+- **Integrity Rule:** Re-check the rationale; never edit a label to match the engine. If a rationale or schema defect is discovered, it must be documented transparently in a subsequent commit rather than rewriting historical ground truth.
 
 ---
 
