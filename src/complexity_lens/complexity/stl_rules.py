@@ -185,6 +185,13 @@ def classify_stl_operation(
                 provenance_assumptions,
             )
         assumptions = list(provenance_assumptions)
+        if range_sym is None:
+            return (
+                ComplexityClass.constant(),
+                Exactness.STRUCTURAL,
+                [ReasonCode.CONSTANT_WORK.value] + provenance_assumptions,
+                assumptions,
+            )
         return (
             ComplexityClass.linearithmic(),
             Exactness.STRUCTURAL,
@@ -196,7 +203,7 @@ def classify_stl_operation(
     # 5. std::find / std::count / std::accumulate — O(n)
     # ----------------------------------------------------------------
     if kind == STLOperationKind.FIND:
-        range_ok, _ = _validate_random_access_range(
+        range_ok, range_sym = _validate_random_access_range(
             args, container, param_names, cin_vars, named_constants, local_constants
         )
         if not range_ok:
@@ -206,6 +213,13 @@ def classify_stl_operation(
                 [ReasonCode.UNSUPPORTED_RANGE.value] + provenance_assumptions,
                 provenance_assumptions,
             )
+        if range_sym is None:
+            return (
+                ComplexityClass.constant(),
+                Exactness.STRUCTURAL,
+                [ReasonCode.CONSTANT_WORK.value] + provenance_assumptions,
+                list(provenance_assumptions),
+            )
         return (
             ComplexityClass.linear(),
             Exactness.STRUCTURAL,
@@ -214,7 +228,7 @@ def classify_stl_operation(
         )
 
     if kind == STLOperationKind.COUNT:
-        range_ok, _ = _validate_random_access_range(
+        range_ok, range_sym = _validate_random_access_range(
             args, container, param_names, cin_vars, named_constants, local_constants
         )
         if not range_ok:
@@ -223,6 +237,13 @@ def classify_stl_operation(
                 Exactness.UNKNOWN,
                 [ReasonCode.UNSUPPORTED_RANGE.value] + provenance_assumptions,
                 provenance_assumptions,
+            )
+        if range_sym is None:
+            return (
+                ComplexityClass.constant(),
+                Exactness.STRUCTURAL,
+                [ReasonCode.CONSTANT_WORK.value] + provenance_assumptions,
+                list(provenance_assumptions),
             )
         return (
             ComplexityClass.linear(),
@@ -244,7 +265,7 @@ def classify_stl_operation(
                 [ReasonCode.UNSUPPORTED_ITERATOR.value] + provenance_assumptions,
                 provenance_assumptions,
             )
-        range_ok, _ = _validate_random_access_range(
+        range_ok, range_sym = _validate_random_access_range(
             args, container, param_names, cin_vars, named_constants, local_constants
         )
         if not range_ok:
@@ -253,6 +274,13 @@ def classify_stl_operation(
                 Exactness.UNKNOWN,
                 [ReasonCode.UNSUPPORTED_RANGE.value] + provenance_assumptions,
                 provenance_assumptions,
+            )
+        if range_sym is None:
+            return (
+                ComplexityClass.constant(),
+                Exactness.STRUCTURAL,
+                [ReasonCode.CONSTANT_WORK.value] + provenance_assumptions,
+                list(provenance_assumptions),
             )
         return (
             ComplexityClass.logarithmic(),
@@ -269,7 +297,7 @@ def classify_stl_operation(
                 [ReasonCode.UNSUPPORTED_ITERATOR.value] + provenance_assumptions,
                 provenance_assumptions,
             )
-        range_ok, _ = _validate_random_access_range(
+        range_ok, range_sym = _validate_random_access_range(
             args, container, param_names, cin_vars, named_constants, local_constants
         )
         if not range_ok:
@@ -278,6 +306,13 @@ def classify_stl_operation(
                 Exactness.UNKNOWN,
                 [ReasonCode.UNSUPPORTED_RANGE.value] + provenance_assumptions,
                 provenance_assumptions,
+            )
+        if range_sym is None:
+            return (
+                ComplexityClass.constant(),
+                Exactness.STRUCTURAL,
+                [ReasonCode.CONSTANT_WORK.value] + provenance_assumptions,
+                list(provenance_assumptions),
             )
         return (
             ComplexityClass.logarithmic(),
@@ -359,8 +394,8 @@ def _is_random_access_container(container: str | None, args: list[str]) -> bool:
 
     # Check for C-style array / pointer range: (a, a+n)
     if len(args) >= 2:
-        first = args[0].strip()
-        second = args[1].strip()
+        first = args[0].strip().replace(" ", "")
+        second = args[1].strip().replace(" ", "")
         if "+" in second:
             base = second.split("+", 1)[0].strip()
             if base == first:
@@ -400,28 +435,33 @@ def _validate_random_access_range(
     if len(args) < 2:
         return False, None
 
-    first = args[0].strip()
-    second = args[1].strip()
+    first = args[0].strip().replace(" ", "")
+    second = args[1].strip().replace(" ", "")
 
     # Form 1: c.begin(), c.end() — container must be known and recognized
     if first.endswith(".begin()") and second.endswith(".end()"):
         prefix_first = first[: -len(".begin()")]
         prefix_second = second[: -len(".end()")]
-        if prefix_first == prefix_second:
-            # container name must be derivable from either arg or the op.container field
+        if prefix_first and prefix_first == prefix_second:
             return True, prefix_first
+        if not prefix_first and not prefix_second and container:
+            return True, container
         return False, None
+
+    if first in ("begin()", "begin") and second in ("end()", "end") and container:
+        return True, container
 
     # Form 2: a, a+n
     if "+" in second:
         parts = second.split("+", 1)
         base = parts[0].strip()
-        n_part = parts[1].strip() if len(parts) > 1 else ""
+        n_part = parts[1].strip().strip("()") if len(parts) > 1 else ""
         if base == first:
             if _is_input_symbol(n_part, param_names, cin_vars, named_constants):
                 return True, n_part
             if _is_literal_or_local_const(n_part, local_constants):
-                return True, None  # constant range
+                if not _is_input_symbol(n_part, param_names, cin_vars, named_constants):
+                    return True, None  # constant range
         return False, None
 
     # If container is known and recognized as random-access, and args don't
