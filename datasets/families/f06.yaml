@@ -1,0 +1,12 @@
+family_idea: "Access and sum front and back elements of a vector with non-empty guard."
+label: "O1"
+label_rationale: "Accessing vector front and back elements through member methods or indices with an emptiness guard executes in O(1) constant time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f06_front_back_basic"
+  - "f06_front_back_index"
+  - "f06_front_back_iter"
+assumptions:
+  - "std::vector front, back, size, and random-access index operations take O(1) time."

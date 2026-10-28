@@ -1,0 +1,15 @@
+family_idea: "In-place bubble sort with nested adjacent element passes."
+label: "ON2"
+label_rationale: "Bubble sort performs up to n passes through the array; each pass compares adjacent elements up to n - i - 1. In the worst case (e.g. reverse-ordered inputs), it performs sum_{i=0}^{n-1} (n - i - 1) = n(n - 1) / 2 comparisons and swaps in strictly O(n^2) worst-case time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f32_bubble_sort_basic"
+  - "f32_bubble_sort_while"
+  - "f32_bubble_sort_helper"
+assumptions:
+  - "Input size n is container length."
+  - "Worst-case time complexity is evaluated when initial elements are in reverse sorted order."

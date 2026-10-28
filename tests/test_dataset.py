@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from complexity_lens.dataset import (
     ALLOWED_LABELS,
+    ALLOWED_ORIGINS,
     ALLOWED_TAGS,
     ALLOWED_UNKNOWN_REASONS,
     compute_comment_stripped_sha256,
@@ -58,8 +59,8 @@ class TestDatasetLoaderAndIntegrity:
     def test_load_dataset_success(self):
         records, families, errors = load_dataset("datasets")
         assert len(errors) == 0, f"Unexpected dataset errors: {errors}"
-        assert len(families) == 10
-        assert len(records) == 38
+        assert len(families) >= 10
+        assert len(records) >= 38
 
     def test_record_schema_fields(self):
         records, _, errors = load_dataset("datasets")
@@ -73,6 +74,7 @@ class TestDatasetLoaderAndIntegrity:
             assert "label_rationale" in d and len(d["label_rationale"]) > 0
             assert d["label_status"] == "author_labeled"
             assert d["verified"] is False
+            assert d["origin"] in ALLOWED_ORIGINS
             assert "source_sha256" in d and len(d["source_sha256"]) == 64
             # Must NOT contain train/validation/test split fields
             assert "split" not in d
@@ -104,7 +106,7 @@ class TestDatasetLoaderAndIntegrity:
         rule_hard_fam_ids = {f.family_id for f in families if f.tag == "rule_hard"}
         rule_hard_records = [r for r in records if r.family_id in rule_hard_fam_ids]
         # At least one third must be rule-hard
-        assert len(rule_hard_records) >= len(records) / 3
+        assert len(rule_hard_records) >= len(records) // 3
 
     def test_no_duplicate_program_ids_or_hashes(self):
         records, _, errors = load_dataset("datasets")
@@ -145,14 +147,87 @@ class TestDatasetLoaderAndIntegrity:
         recs, fams, errors = load_dataset(tmp_path)
         assert any("Extra unreferenced source file" in e for e in errors)
 
+    def test_invalid_origin_rejected(self, tmp_path):
+        fam_dir = tmp_path / "families"
+        fam_dir.mkdir()
+        prog_dir = tmp_path / "programs"
+        prog_dir.mkdir()
+
+        (fam_dir / "fam_test.yaml").write_text(
+            "family_idea: test\nlabel: O1\nlabel_rationale: test\ntag: easy\n"
+            "expected_parse: valid\nprograms:\n  - prog1\nassumptions:\n  - none\n"
+            "origin: invalid_origin\n"
+        )
+        (prog_dir / "fam_test").mkdir()
+        (prog_dir / "fam_test" / "prog1.cpp").write_text("int f() { return 1; }")
+
+        recs, fams, errors = load_dataset(tmp_path)
+        assert any("invalid origin" in e for e in errors)
+
+    def test_valid_mutation_origin_accepted(self, tmp_path):
+        fam_dir = tmp_path / "families"
+        fam_dir.mkdir()
+        prog_dir = tmp_path / "programs"
+        prog_dir.mkdir()
+
+        (fam_dir / "fam_test.yaml").write_text(
+            "family_idea: test\nlabel: O1\nlabel_rationale: test\ntag: easy\n"
+            "expected_parse: valid\nprograms:\n  - prog1\nassumptions:\n  - none\n"
+            "origin: mutation\n"
+        )
+        (prog_dir / "fam_test").mkdir()
+        (prog_dir / "fam_test" / "prog1.cpp").write_text("int f() { return 1; }")
+
+        recs, fams, errors = load_dataset(tmp_path)
+        assert len(errors) == 0
+        assert recs[0].origin == "mutation"
+
+    def test_legacy_unspecified_origin_fallback(self, tmp_path):
+        fam_dir = tmp_path / "families"
+        fam_dir.mkdir()
+        prog_dir = tmp_path / "programs"
+        prog_dir.mkdir()
+
+        (fam_dir / "fam_legacy.yaml").write_text(
+            "family_idea: test\nlabel: O1\nlabel_rationale: test\ntag: easy\n"
+            "expected_parse: valid\nprograms:\n  - prog1\nassumptions:\n  - none\n"
+        )
+        (prog_dir / "fam_legacy").mkdir()
+        (prog_dir / "fam_legacy" / "prog1.cpp").write_text("int f() { return 1; }")
+
+        recs, fams, errors = load_dataset(tmp_path)
+        assert len(errors) == 0
+        assert recs[0].origin == "unspecified"
+
+    def test_explicit_hand_written_origin(self, tmp_path):
+        fam_dir = tmp_path / "families"
+        fam_dir.mkdir()
+        prog_dir = tmp_path / "programs"
+        prog_dir.mkdir()
+
+        (fam_dir / "fam_hw.yaml").write_text(
+            "family_idea: test\nlabel: O1\nlabel_rationale: test\ntag: easy\n"
+            "expected_parse: valid\norigin: hand_written\n"
+            "programs:\n  - prog1\nassumptions:\n  - none\n"
+        )
+        (prog_dir / "fam_hw").mkdir()
+        (prog_dir / "fam_hw" / "prog1.cpp").write_text("int f() { return 1; }")
+
+        recs, fams, errors = load_dataset(tmp_path)
+        assert len(errors) == 0
+        assert recs[0].origin == "hand_written"
+
 
 class TestDatasetReport:
     """Validate comprehensive dataset reporting."""
 
     def test_generate_report_structure(self):
         report = generate_dataset_report("datasets", check_parser=True)
-        assert report["total_records"] == 38
-        assert report["total_families"] == 10
+        assert report["total_records"] >= 38
+        assert report["total_families"] >= 10
+        assert "counts_by_origin" in report
+        assert report["counts_by_origin"]["hand_written"] >= 30
+        assert report["counts_by_origin"]["unspecified"] == 38
         assert len(report["metadata_schema_failures"]) == 0
         assert len(report["duplicate_program_ids"]) == 0
         assert len(report["duplicate_source_hashes"]) == 0

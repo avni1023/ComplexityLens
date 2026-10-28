@@ -1,0 +1,16 @@
+family_idea: "A loop iterating n times that calls a helper containing a nested n x n loop, yielding O(n^3) via inter-procedural composition."
+label: "ON3"
+label_rationale: "The outer loop executes n times. Each iteration invokes a helper whose two nested loops each run n iterations, performing n^2 work per call. Total work: n x n^2 = n^3 = O(n^3)."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f42_outer_loop_calls_nested_helper"
+  - "f42_outer_while_calls_matrix_helper"
+  - "f42_range_for_calls_square_helper"
+assumptions:
+  - "n is the single input symbol representing both the outer loop bound and the helper's two loop bounds."
+  - "The helper performs n x n = n^2 work unconditionally in the worst case."
+  - "Inter-procedural composition: outer O(n) x inner O(n^2) = O(n^3)."

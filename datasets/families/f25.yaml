@@ -1,0 +1,14 @@
+family_idea: "Linear outer loop of size n containing an inner logarithmic halving or doubling loop."
+label: "ONLOGN"
+label_rationale: "The outer loop executes n iterations; for each iteration, the inner loop halves or doubles its control variable across [1, n], taking floor(log2(n)) steps. The product n * log2(n) yields strictly O(n log n) worst-case time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f25_loop_inner_halving"
+  - "f25_loop_inner_doubling"
+  - "f25_loop_halving_helper"
+assumptions:
+  - "Outer loop executes n times; inner loop performs floor(log2(n)) steps with O(1) body work."

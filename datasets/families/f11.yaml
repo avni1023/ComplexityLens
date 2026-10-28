@@ -1,0 +1,12 @@
+family_idea: "Iterative binary exponentiation reducing exponent n by half on each iteration."
+label: "OLOGN"
+label_rationale: "Binary exponentiation halves exponent n on each step (n /= 2), requiring floor(log2(n)) + 1 iterations of O(1) multiplications for an asymptotic complexity of O(log n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f11_power_squaring_while"
+  - "f11_power_helper_shift"
+  - "f11_power_early_return"
+assumptions:
+  - "Input n represents the non-negative integer exponent."

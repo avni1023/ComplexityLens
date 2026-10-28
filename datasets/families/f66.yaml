@@ -1,0 +1,26 @@
+family_idea: "Loop continuing while rand() % 10 != 0; loop exit is driven by standard library rand() with no static worst-case bound."
+label: "UNKNOWN"
+label_rationale: "The loop condition queries rand() from <cstdlib>. The exit condition depends on an external pseudo-random library function whose return sequence is opaque to static analysis. Because static analysis cannot establish an upper bound on iterations without an adversary or seed model, it must abstain: unknown_reason is 'external_call'. Note: this does not claim mathematical non-termination, but that static worst-case analysis cannot bound the external call sequence."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f66_rand_loop_basic"
+  - "f66_rand_loop_for"
+  - "f66_rand_loop_helper"
+assumptions:
+  - "rand() is declared in <cstdlib> and implemented externally."
+  - "Loop exit depends entirely on the return values of rand()."
+  - "unknown_reason is external_call because the exit depends on library function behavior outside the analyzed code."
+program_annotations:
+  f66_rand_loop_basic:
+    unknown_reason: "external_call"
+    explanation: "while loop exit is governed by std::rand() % 10 != 0; external library call cannot be bounded statically in worst case."
+  f66_rand_loop_for:
+    unknown_reason: "external_call"
+    explanation: "for-loop condition tests std::rand() % 6 != 0; trip count is governed by external opaque rand() function."
+  f66_rand_loop_helper:
+    unknown_reason: "external_call"
+    explanation: "Loop condition calls helper invoking std::rand(); static analysis cannot bound the sequence of external returns."

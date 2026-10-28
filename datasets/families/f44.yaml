@@ -1,0 +1,16 @@
+family_idea: "Recursive subset count / 0-1 knapsack branching with two recursive calls on n-1 (include / exclude)."
+label: "OEXP"
+label_rationale: "Recurrence T(n) = 2T(n-1) + O(1). The recursion tree is a full binary tree of height n with 2^n leaves. Total work is sum_{k=0}^n 2^k * O(1) = 2^(n+1) - 1 = Theta(2^n) = OEXP."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f44_subset_count_basic"
+  - "f44_subset_count_ternary"
+  - "f44_subset_count_helper"
+assumptions:
+  - "n is the number of elements / recursion depth (SINGLE_INPUT_SYMBOL)."
+  - "Two recursive calls decrementing n by 1 at each level without memoization."
+  - "Base case at n <= 0 returns in O(1)."

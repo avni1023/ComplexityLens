@@ -1,0 +1,15 @@
+family_idea: "Check for duplicate elements by comparing all pairs using nested loops."
+label: "ON2"
+label_rationale: "Comparing every element at index i against all subsequent elements at indices j > i evaluates n(n - 1) / 2 pairs in the worst case (where all elements are distinct or duplicate is at final pair), executing in strictly O(n^2) worst-case time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f36_duplicate_pairs_for"
+  - "f36_duplicate_pairs_while"
+  - "f36_duplicate_pairs_helper"
+assumptions:
+  - "Input size n is container length."
+  - "Worst-case time complexity is evaluated when all elements are unique."

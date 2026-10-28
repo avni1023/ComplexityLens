@@ -13,6 +13,7 @@ from complexity_lens.complexity import (
     analyze_source,
 )
 from complexity_lens.dataset import (
+    ALLOWED_ORIGINS,
     FamilyMetadata,
     ProgramRecord,
     compute_source_sha256,
@@ -29,6 +30,7 @@ from complexity_lens.features import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ALLOWED_ORIGINS",
     "AnalysisResult",
     "ComplexityClass",
     "Exactness",

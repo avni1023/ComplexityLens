@@ -1,0 +1,15 @@
+family_idea: "Divide-and-conquer array summation splitting range (lo, hi) in half."
+label: "ON"
+label_rationale: "Recurrence relation T(n) = 2T(n/2) + O(1) splits the problem of size n into two subproblems of size n/2 with constant combining work. By Case 1 of the Master Theorem (a = 2, b = 2, log_b(a) = 1 > 0), the total complexity resolves to Theta(n^1) = O(n)."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f58_dac_sum_basic"
+  - "f58_dac_sum_driver"
+  - "f58_dac_sum_max"
+assumptions:
+  - "Divide-and-conquer splits range in half at each step with two recursive subcalls of size n/2 and O(1) combination work."
+  - "Input size n = hi - lo + 1 is the range length."

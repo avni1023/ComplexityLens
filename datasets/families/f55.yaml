@@ -1,0 +1,14 @@
+family_idea: "Recursive binary search dividing range (lo, hi) in half at each step."
+label: "OLOGN"
+label_rationale: "Each recursive invocation evaluates mid = lo + (hi - lo) / 2 and recurses on at most one half of the range. The recurrence relation T(n) = T(n/2) + O(1) produces a call tree of depth floor(log2(n)), yielding strictly O(log n) worst-case time complexity."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f55_rec_binsearch_basic"
+  - "f55_rec_binsearch_lower_bound"
+  - "f55_rec_binsearch_helper"
+assumptions:
+  - "Input array is sorted; range size n = hi - lo + 1 halves at each step."

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from complexity_lens.cli import main
+from complexity_lens.dataset import load_dataset
 from complexity_lens.features.schema import FEATURE_NAMES
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "cpp"
@@ -61,21 +62,23 @@ class TestCLIDatasetReportCommand:
     """Test `dataset report` command."""
 
     def test_dataset_report_text(self, capsys):
+        records, families, _ = load_dataset()
         ret = main(["dataset", "report"])
         assert ret == 0
         captured = capsys.readouterr().out
         assert "ComplexityLens" in captured
-        assert "Total Records:  38" in captured
-        assert "Total Families: 10" in captured
+        assert f"Total Records:  {len(records)}" in captured
+        assert f"Total Families: {len(families)}" in captured
         assert "Duplicate Program IDs : 0" in captured
         assert "Metadata/Schema Errors: 0" in captured
 
     def test_dataset_report_json(self, capsys):
+        records, families, _ = load_dataset()
         ret = main(["dataset", "report", "--json"])
         assert ret == 0
         payload = json.loads(capsys.readouterr().out)
-        assert payload["total_records"] == 38
-        assert payload["total_families"] == 10
+        assert payload["total_records"] == len(records)
+        assert payload["total_families"] == len(families)
         assert len(payload["metadata_schema_failures"]) == 0
         assert len(payload["duplicate_program_ids"]) == 0
         assert len(payload["duplicate_source_hashes"]) == 0

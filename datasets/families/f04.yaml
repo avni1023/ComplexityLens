@@ -1,0 +1,15 @@
+family_idea: "Access fixed indices a[0] and a[5] and return their sum."
+label: "O1"
+label_rationale: "Fixed-index lookups into an array or vector access memory addresses via constant pointer offsets in strictly O(1) constant time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f04_fixed_index_vector"
+  - "f04_fixed_index_array"
+  - "f04_fixed_index_helper"
+assumptions:
+  - "Array and vector element access by constant indices executes in O(1) time."
+  - "Container contains sufficient elements or is guarded against out-of-bounds access."

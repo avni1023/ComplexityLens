@@ -1,0 +1,15 @@
+family_idea: "Iterative binary search on a sorted vector."
+label: "OLOGN"
+label_rationale: "Iterative binary search maintains boundaries [low, high] over a sorted random-access collection of size n. On each iteration, the search interval is halved, terminating in at most floor(log2(n)) + 1 steps for an asymptotic complexity of O(log n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f09_binary_search_standard"
+  - "f09_binary_search_half_open"
+  - "f09_binary_search_helper"
+assumptions:
+  - "Input vector is sorted and elements support O(1) random-access indexing."
+  - "Input size n is the length of the vector."

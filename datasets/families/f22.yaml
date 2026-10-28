@@ -1,0 +1,15 @@
+family_idea: "Recursive factorial with single decrementing recurrence step."
+label: "ON"
+label_rationale: "Recurrence relation T(n) = T(n-1) + O(1) produces a linear call chain of depth n with O(1) operations per frame, resolving to strictly O(n) worst-case time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f22_factorial_basic"
+  - "f22_factorial_accumulator"
+  - "f22_factorial_helper_split"
+assumptions:
+  - "Input n is a non-negative integer in the safe range 0 <= n <= 20 representing problem size; recursion terminates at base case n <= 1."
+  - "The bound n <= 20 ensures factorial values fit within signed 64-bit integer (long long) without arithmetic overflow."

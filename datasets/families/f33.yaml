@@ -1,0 +1,15 @@
+family_idea: "In-place selection sort performing repeated nested minimum scans."
+label: "ON2"
+label_rationale: "Selection sort makes n passes over the array; the i-th pass scans n - i - 1 remaining elements to identify the minimum. Across all passes it performs sum_{i=0}^{n-1} (n - i - 1) = n(n - 1) / 2 comparisons, yielding strictly O(n^2) worst-case time complexity regardless of initial ordering."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f33_selection_sort_basic"
+  - "f33_selection_sort_while"
+  - "f33_selection_sort_helper"
+assumptions:
+  - "Selection sort performs n(n - 1)/2 element comparisons across all passes."
+  - "Input size n is container length."

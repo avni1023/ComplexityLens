@@ -1,0 +1,12 @@
+family_idea: "Swap two integer values and return their sum using straight-line operations."
+label: "O1"
+label_rationale: "Straight-line execution with primitive integer operations takes strictly O(1) constant time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f01_swap_basic"
+  - "f01_swap_helper"
+  - "f01_swap_arithmetic"
+assumptions:
+  - "Primitive arithmetic and assignment operations execute in O(1) time."

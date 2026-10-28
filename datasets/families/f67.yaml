@@ -1,0 +1,26 @@
+family_idea: "Floating-point convergence loop continuing while std::fabs(x - y) > eps; halting depends on continuous precision and floating-point rounding."
+label: "UNKNOWN"
+label_rationale: "Loop iterates while the difference between successive floating-point approximations exceeds an epsilon threshold (e.g. Newton-Raphson or interval bisection). The number of steps depends on continuous input values, floating-point rounding modes, and precision limits. Halting cannot be determined by discrete static analysis: unknown_reason is 'termination'."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f67_float_convergence_newton"
+  - "f67_float_convergence_bisection"
+  - "f67_float_convergence_helper"
+assumptions:
+  - "eps is a strictly positive floating-point tolerance (e.g. 1e-7)."
+  - "The loop has no artificial discrete counter cap; it terminates only when the continuous tolerance condition is satisfied."
+  - "Static analysis cannot bound iterations across arbitrary floating-point inputs without real-analysis proof: unknown_reason is termination."
+program_annotations:
+  f67_float_convergence_newton:
+    unknown_reason: "termination"
+    explanation: "Newton-Raphson approximation loop continuing while std::fabs(curr - prev) > eps; termination depends on continuous numerical convergence."
+  f67_float_convergence_bisection:
+    unknown_reason: "termination"
+    explanation: "Bisection root-finding loop continuing while std::fabs(high - low) > eps; step count cannot be resolved without continuous interval proof."
+  f67_float_convergence_helper:
+    unknown_reason: "termination"
+    explanation: "Convergence step extracted to helper; while-loop condition checks floating-point tolerance threshold, undecidable statically."

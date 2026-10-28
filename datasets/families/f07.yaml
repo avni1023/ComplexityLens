@@ -1,0 +1,15 @@
+family_idea: "Count the number of halving divisions until n reaches 1."
+label: "OLOGN"
+label_rationale: "The loop divides the input value n by 2 on each iteration until n <= 1. The number of iterations is floor(log2(n)), yielding strictly O(log n) logarithmic time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f07_while_halving_count"
+  - "f07_for_halving_count"
+  - "f07_while_shift_helper"
+assumptions:
+  - "Input parameter n is a positive integer representing the problem size."
+  - "Integer division by 2 halves the value on each step."

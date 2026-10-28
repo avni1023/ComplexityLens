@@ -1,0 +1,12 @@
+family_idea: "Reverse an array or vector in place by swapping symmetric elements from both ends."
+label: "ON"
+label_rationale: "Swapping elements from both ends requires floor(n / 2) iterations of O(1) swap operations, taking O(n) linear time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f18_reverse_two_pointers"
+  - "f18_reverse_for_half"
+  - "f18_reverse_vector_iter"
+assumptions:
+  - "In-place element swapping takes O(1) time; input size is array length n."

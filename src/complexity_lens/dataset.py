@@ -38,6 +38,8 @@ ALLOWED_UNKNOWN_REASONS: frozenset[str] = frozenset(
     }
 )
 
+ALLOWED_ORIGINS: frozenset[str] = frozenset({"hand_written", "mutation", "unspecified"})
+
 
 # ---------------------------------------------------------------------------
 # Source Hashing Policy
@@ -128,6 +130,7 @@ class ProgramRecord:
     unknown_explanation: str | None = None
     label_status: str = "author_labeled"
     verified: bool = False
+    origin: str = "unspecified"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert record to a stable dictionary representation."""
@@ -141,6 +144,7 @@ class ProgramRecord:
             "unknown_explanation": self.unknown_explanation,
             "label_status": self.label_status,
             "verified": self.verified,
+            "origin": self.origin,
             "source_sha256": self.source_sha256,
         }
 
@@ -377,11 +381,19 @@ def load_dataset(
             else:
                 seen_hashes[sha] = pid
 
+            # Check origin
+            p_ann = annotations.get(pid, {})
+            origin = p_ann.get("origin", raw.get("origin", "unspecified"))
+            if origin not in ALLOWED_ORIGINS:
+                errors.append(
+                    f"Program '{pid}' in family {fam_id} invalid origin '{origin}', "
+                    f"must be one of {sorted(ALLOWED_ORIGINS)}"
+                )
+
             # Check UNKNOWN annotations if applicable
             unknown_reason: str | None = None
             unknown_explanation: str | None = None
             if label == "UNKNOWN":
-                p_ann = annotations.get(pid, {})
                 reason = p_ann.get("unknown_reason")
                 if not reason or reason not in ALLOWED_UNKNOWN_REASONS:
                     errors.append(
@@ -411,6 +423,7 @@ def load_dataset(
                     unknown_explanation=unknown_explanation,
                     label_status="author_labeled",
                     verified=False,
+                    origin=str(origin),
                 )
             )
 
@@ -555,11 +568,19 @@ def generate_dataset_report(
     else:
         parser_result = {"status": "SKIPPED", "message": "Parser check skipped or no records"}
 
+    # Origin counts
+    counts_by_origin: dict[str, int] = {}
+    for orig in ALLOWED_ORIGINS:
+        counts_by_origin[orig] = 0
+    for r in records:
+        counts_by_origin[r.origin] = counts_by_origin.get(r.origin, 0) + 1
+
     return {
         "total_records": len(records),
         "total_families": len(families),
         "counts_by_label": counts_by_label,
         "counts_by_family": counts_by_family,
+        "counts_by_origin": counts_by_origin,
         "unknown_reasons_breakdown": unknown_reasons_breakdown,
         "metadata_schema_failures": errors,
         "duplicate_program_ids": duplicate_program_ids,

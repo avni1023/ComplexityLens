@@ -139,6 +139,33 @@ Day 5 extended the engine across three major stages:
 
 ---
 
+### Day 7 — Dataset Tooling, Integrity, and Week 1 Gate
+* **What was built:**
+  - Independent ground truth architecture: historical Phase A labels-only commit (`f23df075...`) established gold labels and hand-derived rationales before implementing evaluation tooling.
+  - Strict YAML schema and normalized `source_sha256` hashing policy in `docs/DATASET.md`.
+  - Core dataset module in `src/complexity_lens/dataset.py` with dataset loader, schema validator, duplicate detection, and AST parser validity checks.
+  - CLI commands `complexity-lens dataset report` and `complexity-lens dataset check-agreement` with machine-readable JSON exports.
+  - Baseline agreement audit: 63.2% (24/38) agreement with static engine, with detailed justification for all 14 engine abstentions documented in `docs/DATASET_REVIEW.md`.
+  - Integrity rule established: *never edit a gold label to match the engine*.
+* **Why was it needed? (Viva Concept)**
+  - Prevents evaluation circularity: benchmarks must have independently authored ground truth. Disagreements between static predictions and gold labels expose analyzer limitations, not label errors.
+
+---
+
+### Day 8 — Benchmark Expansion, Origin Tracking, and Governance Audit
+* **What was built:**
+  - Expanded dataset from 10 baseline families (38 programs) to 78 families (242 programs) across 8 complexity classes (`O1`, `OLOGN`, `ON`, `ONLOGN`, `ON2`, `ON3`, `OEXP`, `UNKNOWN`).
+  - Implemented 68 Phase 2 families (`f01`–`f68`) comprising 204 hand-written programs (seed + 2 structurally distinct variants per family).
+  - Added program provenance tracking (`origin: hand_written`, `mutation`, or `unspecified`) across schemas, data models, validators, and CLI reporting.
+  - Conducted comprehensive Phase 2 dataset audits across Groups A through E, completing all 10 UNKNOWN families (`f59`–`f68`) across 5 audit batches.
+  - Formally recorded and approved dataset governance policies in `docs/audits/DATASET_GOVERNANCE_DECISIONS.md`: canonical family plan designation, historical baseline preservation, and split isolation policy.
+  - Full CLI dataset report verified: 0 schema errors, 0 duplicate IDs or hashes, and 242/242 programs successfully parsed.
+* **Why was it needed? (Viva Concept)**
+  - Provides a balanced, diverse, fine-grained benchmark necessary for training and evaluating machine learning baselines (Days 10–12) while preserving the legacy benchmark for out-of-distribution regression testing.
+  - Origin tracking differentiates original hand-written code from future synthetic mutations, ensuring rigorous provenance control.
+
+---
+
 ## Quick Viva Questions & Answers
 
 **Q1: Why does ComplexityLens perform static analysis instead of just running the program and measuring time?**  
@@ -161,3 +188,12 @@ Day 5 extended the engine across three major stages:
 
 **Q7: How is `max_loop_depth` computed when a loop in function A calls function B?**  
 *Answer:* A loop at depth $d$ calling a non-recursive callee B with maximum intrinsic loop depth $k$ contributes a candidate depth of $d + k$. To prevent infinite traversal on recursive functions, recursive cycles contribute 0 additional depth across call sites and traversal does not follow cyclic calls.
+
+**Q8: Why is ground truth labeled independently in a separate commit before running the static analyzer?**  
+*Answer:* If labels were derived using the tool or modified to match its outputs, the benchmark would measure self-consistency rather than true algorithmic accuracy. Hand-derived mathematical proofs ensure ground truth reflects actual asymptotic complexity.
+
+**Q9: What are the five allowed reasons for an `UNKNOWN` ground-truth label?**  
+*Answer:* The closed vocabulary consists of: `data_dependent` (iteration count depends on array/pointer data values), `termination` (non-obvious mathematical halting like Collatz or floating-point convergence), `unsupported_construct` (syntax deliberately outside supported IR like inline assembly or unstructured `goto`), `external_call` (opaque library or unresolved functions), and `irregular_recursion` (dynamic or non-standard recurrence branching).
+
+**Q10: Why does the project maintain both a 10-family legacy baseline and a 68-family Phase 2 benchmark?**  
+*Answer:* The 10 legacy families (38 programs) represent the historical Week 1 baseline. Preserving them unaltered under governance policy prevents benchmark drift and allows regression testing, while the 68 new fine-grained families (204 programs) provide a structured, stratified dataset with seeds and structural variants for ML model training and evaluation.

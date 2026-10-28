@@ -1,0 +1,15 @@
+family_idea: "Sort vector with std::sort followed by linear adjacent scan to count unique values."
+label: "ONLOGN"
+label_rationale: "Sorting a vector of size n takes O(n log n) comparisons; the subsequent linear pass comparing adjacent elements takes O(n) operations. The sort phase asymptotically dominates, giving O(n log n) overall."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f28_sort_unique_adjacent_for"
+  - "f28_sort_unique_adjacent_while"
+  - "f28_sort_unique_adjacent_helper"
+assumptions:
+  - "std::sort uses introsort with O(n log n) worst-case time; adjacent scan visits each adjacent pair in O(1) time."
+  - "Input size n is vector length."

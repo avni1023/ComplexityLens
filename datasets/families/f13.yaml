@@ -1,0 +1,14 @@
+family_idea: "Recursive halving recurrence f(n/2) + O(1) dividing input by 2 at each recursive step."
+label: "OLOGN"
+label_rationale: "Recurrence relation T(n) = T(n/2) + O(1) produces a call tree of depth floor(log2(n)) with a single invocation per level, resolving to O(log n) time complexity by the Master Theorem."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f13_recurse_halving_count"
+  - "f13_recurse_halving_accum"
+  - "f13_recurse_halving_helper"
+assumptions:
+  - "Input n is a positive integer; each recursive step halves n doing O(1) work before or after the recursive call."

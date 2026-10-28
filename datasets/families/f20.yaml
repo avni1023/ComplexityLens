@@ -1,0 +1,12 @@
+family_idea: "Construct prefix-sum array from input sequence via single forward linear pass."
+label: "ON"
+label_rationale: "Constructing cumulative prefix sums performs one addition per element over an array of size n, running in O(n) linear time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f20_prefix_sum_for"
+  - "f20_prefix_sum_in_place_helper"
+  - "f20_prefix_sum_while"
+assumptions:
+  - "Array allocation and element addition take O(1) time per element."

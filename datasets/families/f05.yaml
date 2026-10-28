@@ -1,0 +1,15 @@
+family_idea: "Calculate the arithmetic series sum using the formula n*(n+1)/2."
+label: "O1"
+label_rationale: "Closed-form arithmetic expression n * (n + 1) / 2 evaluates the triangular sum with straight-line arithmetic operations in strictly O(1) constant time regardless of the magnitude of n."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f05_triangular_formula_direct"
+  - "f05_triangular_formula_bitwise"
+  - "f05_triangular_formula_helper"
+assumptions:
+  - "Fixed-width integer multiplication, addition, and division execute in O(1) constant time."
+  - "Input parameter n represents the upper bound of the arithmetic sequence."

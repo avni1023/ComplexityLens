@@ -1,0 +1,24 @@
+family_idea: "Loop bound is determined by runtime data content a[0] rather than container size."
+label: "UNKNOWN"
+label_rationale: "The loop trip count is governed by the value of data element a[0], which is determined at runtime and unconstrained by the container size n. Static analysis cannot determine worst-case complexity without knowing runtime data values."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f61_data_bound_first_element"
+  - "f61_data_bound_while_val"
+  - "f61_data_bound_helper"
+assumptions:
+  - "Runtime data values are arbitrary; static analysis cannot infer loop bounds from array contents."
+program_annotations:
+  f61_data_bound_first_element:
+    unknown_reason: "data_dependent"
+    explanation: "Loop termination bound is read directly from array content arr[0], making the number of iterations dependent on input data values."
+  f61_data_bound_while_val:
+    unknown_reason: "data_dependent"
+    explanation: "While-loop condition checks counter against vector element value v[0], so total iterations are data-dependent."
+  f61_data_bound_helper:
+    unknown_reason: "data_dependent"
+    explanation: "Upper loop bound is returned by a helper extracting runtime data element items[0], yielding a data-dependent trip count."

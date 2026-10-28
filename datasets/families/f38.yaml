@@ -1,0 +1,15 @@
+family_idea: "Repeatedly erase the front element v.erase(v.begin()) until the vector is empty."
+label: "ON2"
+label_rationale: "Erasing the front element of a std::vector of size k shifts all remaining k - 1 elements left by one position, requiring O(k) work. Repeatedly erasing from the front until the vector of initial size n is empty performs sum_{k=1}^n O(k) = O(n^2) total operations."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f38_repeated_erase_while"
+  - "f38_repeated_erase_for"
+  - "f38_repeated_erase_helper"
+assumptions:
+  - "std::vector::erase at v.begin() takes time proportional to the number of remaining elements shifted."
+  - "Input size n is initial container length."

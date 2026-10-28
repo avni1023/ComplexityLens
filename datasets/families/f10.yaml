@@ -1,0 +1,14 @@
+family_idea: "Count digits or decompose base-10 value by repeatedly dividing integer value n by 10."
+label: "OLOGN"
+label_rationale: "Each division by 10 reduces the magnitude of integer n by a constant factor, executing floor(log10(n)) + 1 steps for an asymptotic complexity of O(log n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f10_digit_count_while"
+  - "f10_digit_sum_helper"
+  - "f10_digit_remove_do_while"
+assumptions:
+  - "Input n represents the integer value whose decimal representation is processed."
+  - "For implementations that negate negative inputs, n must be greater than INT_MIN so that -n is representable in the signed integer type."
+  - "The digit-counting while-loop implementation returns 1 for n <= 0; its behavior for negative inputs differs from the implementations that process the magnitude."

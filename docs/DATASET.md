@@ -47,28 +47,34 @@ An optional comment-stripped hash may be computed for diagnostics only using the
 
 ## 4. Dataset Family Definitions and Structure
 
-The initial benchmark comprises **38 C++ programs across 10 families** (3–4 programs per family). At least one third of the programs (18/38, or 47.4%) belong to rule-hard families.
+The complete benchmark encompasses **242 C++ programs across 78 families**:
+- **Primary Phase 2 Benchmark:** 68 fine-grained families (`f01`–`f68`) comprising **204 hand-written programs** (`origin: hand_written`, 3 programs per family: 1 seed plus 2 structurally distinct variants). Documented in canonical [`docs/FAMILY_PLAN.md`](file:///C:/Users/Admin/OneDrive/Documents/ComplexityLens/docs/FAMILY_PLAN.md).
+- **Historical Baseline Benchmark:** 10 macro-families (`fam_*`) comprising **38 programs** (`origin: unspecified`), preserved unaltered under Policy 2 of [`docs/audits/DATASET_GOVERNANCE_DECISIONS.md`](file:///C:/Users/Admin/OneDrive/Documents/ComplexityLens/docs/audits/DATASET_GOVERNANCE_DECISIONS.md).
 
 Directory layout:
 - `datasets/families/<family_id>.yaml`
 - `datasets/programs/<family_id>/<program_id>.cpp`
 
-### Family Summary Table
+### Benchmark Distribution (Day 8 Finalization)
 
-| Family ID | Label | Tag | Expected Parse | Programs Count | Core Algorithmic Idea |
-|---|---|---|---|---|---|
-| `fam_constant_ops` | `O1` | `easy` | `valid` | 4 | Straight-line primitive arithmetic, vector lookups, bounded loops. |
-| `fam_binary_search` | `OLOGN` | `easy` | `valid` | 4 | Logarithmic domain reduction via division by 2 or `std::lower_bound`. |
-| `fam_linear_scan` | `ON` | `easy` | `valid` | 4 | Single linear loop iterating up to $n$ or `std::find`/`std::count`. |
-| `fam_quadratic_nested` | `ON2` | `easy` | `valid` | 4 | Doubly-nested loops iterating up to $n$ (matrix / triangular pairs). |
-| `fam_rule_hard_divide_conquer` | `ONLOGN` | `rule_hard` | `valid` | 4 | Merge-sort divide-and-conquer recursion over ranges with linear merge. |
-| `fam_rule_hard_linear` | `ON` | `rule_hard` | `valid` | 4 | Linear loops with intermediate bounds (`n/2`), constant step variables, early exit. |
-| `fam_rule_hard_nested` | `ON2` | `rule_hard` | `valid` | 4 | Helper loops called inside loops, `std::find`/`std::count` called inside loops. |
-| `fam_exponential_recurrence` | `OEXP` | `easy` | `valid` | 4 | Multi-branching recursive calls on decremented arguments (Fibonacci / subset-sum). |
-| `fam_unknown_data_dependent` | `UNKNOWN` | `rule_hard` | `valid` | 3 | Collatz sequence, data-dependent array jumps, irregular recursion. |
-| `fam_unknown_external_unsupported` | `UNKNOWN` | `rule_hard` | `has_unsupported_constructs` | 3 | External opaque function call, inline `__asm__`, Euclidean GCD. |
+| Complexity Class | Token | Programs | Percentage | Primary Phase 2 Families |
+|---|---|---|---|---|
+| Constant | `O1` | 21 | 8.7% | `f01`–`f06` + baseline |
+| Logarithmic | `OLOGN` | 31 | 12.8% | `f07`–`f15` + baseline |
+| Linear | `ON` | 56 | 23.1% | `f16`–`f23`, `f53`–`f55`, `f57`–`f58` + baseline |
+| Linearithmic | `ONLOGN` | 25 | 10.3% | `f24`–`f29` + baseline |
+| Quadratic | `ON2` | 44 | 18.2% | `f30`–`f41` + baseline |
+| Cubic | `ON3` | 12 | 5.0% | `f42`–`f45` |
+| Exponential | `OEXP` | 17 | 7.0% | `f46`–`f48` + baseline |
+| Unknown / Abstain | `UNKNOWN` | 36 | 14.9% | `f59`–`f68` + baseline |
 
-Total: **10 families, 38 programs**.
+### UNKNOWN Reasons Breakdown
+
+- `data_dependent`: 8 programs (dynamic array bounds, pointer chasing, values governing iterations)
+- `external_call`: 9 programs (opaque library routines, declared-only prototypes, `rand()`)
+- `irregular_recursion`: 3 programs (data-governed recurrence split points)
+- `termination`: 7 programs (Collatz sequences, continuous floating-point epsilon convergence)
+- `unsupported_construct`: 9 programs (inline `__asm__`, lambda comparator, function pointers, `goto` loops)
 
 ---
 
@@ -76,12 +82,13 @@ Total: **10 families, 38 programs**.
 
 ### Family Metadata YAML Schema (`datasets/families/<family_id>.yaml`)
 - `family_idea`: (string) High-level algorithmic pattern.
-- `label`: (string) One of the 8 vocabulary labels.
+- `label`: (string) One of the 8 vocabulary labels (`O1`, `OLOGN`, `ON`, `ONLOGN`, `ON2`, `ON3`, `OEXP`, `UNKNOWN`).
 - `label_rationale`: (string) Hand-derived proof or reasoning.
 - `tag`: (string) Exactly `easy` or `rule_hard`.
 - `expected_parse`: (string) Exactly `valid` or `has_unsupported_constructs`.
+- `origin`: (optional string) Program provenance; one of `hand_written`, `mutation`, or `unspecified` (defaults to `unspecified` if omitted for legacy families).
 - `programs`: (list of strings) Program IDs belonging to this family.
-- `assumptions`: (list of strings) Stated operational assumptions (e.g. `HASH_AVERAGE_CASE`).
+- `assumptions`: (list of strings) Stated operational assumptions (e.g. `HASH_AVERAGE_CASE`, `SINGLE_INPUT_SYMBOL`).
 - `program_annotations`: (optional mapping) Program-specific overrides, including `unknown_reason` and `explanation`.
 
 ### Assembled Program Record Schema
@@ -93,4 +100,5 @@ Total: **10 families, 38 programs**.
 - `unknown_reason`: (string or null) Specific allowed UNKNOWN reason identifier where applicable.
 - `label_status`: (string) Exactly `author_labeled`.
 - `verified`: (boolean) `false` until peer-reviewed.
+- `origin`: (string) Provenance classification (`hand_written`, `mutation`, or `unspecified`).
 - `source_sha256`: (string) 64-character hex SHA-256 digest under normalized policy.

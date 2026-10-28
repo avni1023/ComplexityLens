@@ -245,6 +245,11 @@ def run_dataset_report(dataset_dir: str | Path = "datasets", as_json: bool = Fal
     for fam, count in sorted(report["counts_by_family"].items()):
         print(f"  {fam:<36}: {count}")
 
+    if "counts_by_origin" in report:
+        print("\n[Counts by Origin]")
+        for orig, count in sorted(report["counts_by_origin"].items()):
+            print(f"  {orig:<14}: {count}")
+
     print("\n[UNKNOWN Counts and Reasons Breakdown]")
     if report["unknown_reasons_breakdown"]:
         for reason, count in sorted(report["unknown_reasons_breakdown"].items()):

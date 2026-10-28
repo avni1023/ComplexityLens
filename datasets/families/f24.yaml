@@ -1,0 +1,16 @@
+family_idea: "Merge sort: recursive divide-and-conquer on (lo, hi) index ranges with linear merge step."
+label: "ONLOGN"
+label_rationale: "Recurrence T(n) = 2T(n/2) + O(n): the problem is split into two halves at each level (log n levels), and each level performs O(n) total merge work, yielding O(n log n) by the Master theorem."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f24_mergesort_basic"
+  - "f24_mergesort_while_merge"
+  - "f24_mergesort_helper_merge"
+assumptions:
+  - "n is the size of the array / subarray length (hi - lo)."
+  - "Merge step scans both halves linearly: O(n) per level."
+  - "Two recursive calls on disjoint halves of size n/2 each."

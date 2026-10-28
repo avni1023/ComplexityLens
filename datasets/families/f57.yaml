@@ -1,0 +1,14 @@
+family_idea: "Mutual recursion between two alternating functions with decrementing argument n-1."
+label: "ON"
+label_rationale: "Functions is_even and is_odd mutually call each other, decrementing argument n by 1 at each step until reaching base case 0. This produces a linear mutual call sequence of exactly n frames, each performing O(1) operations, yielding strictly O(n) worst-case time complexity."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f57_mutual_rec_even_odd"
+  - "f57_mutual_rec_ping_pong"
+  - "f57_mutual_rec_step_parity"
+assumptions:
+  - "Input n is a non-negative integer representing call depth; recursion decrements strictly by 1."

@@ -1,0 +1,14 @@
+family_idea: "Two sequential, non-nested loops each iterating up to input size n."
+label: "ON"
+label_rationale: "Two sequential loops of length n execute n + n = 2n iterations with O(1) body operations, yielding strictly O(n) worst-case time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f19_two_loops_for"
+  - "f19_two_loops_while_for"
+  - "f19_two_loops_helpers"
+assumptions:
+  - "Input size n represents container length or loop bound; both loops execute sequentially doing O(1) work per iteration."

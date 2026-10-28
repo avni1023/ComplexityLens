@@ -1,0 +1,16 @@
+family_idea: "Linear search with early return on finding target element."
+label: "ON"
+label_rationale: "In the worst case where the target element is absent or located at the final index, linear search scans every element across the entire collection of size n, performing n comparisons for an asymptotic worst-case complexity of O(n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f16_linear_search_for"
+  - "f16_linear_search_while"
+  - "f16_linear_search_helper"
+assumptions:
+  - "Worst-case time complexity is evaluated when target is absent or at the last index."
+  - "Input size n is the container size."
+  - "Element comparison takes O(1) time."

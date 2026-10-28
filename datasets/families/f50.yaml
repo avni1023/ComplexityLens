@@ -1,0 +1,16 @@
+family_idea: "A linear loop calling a helper function that itself contains a linear loop over n, yielding O(n^2) via inter-procedural composition."
+label: "ON2"
+label_rationale: "The outer loop executes n iterations. Each iteration invokes a helper function that executes a loop of n iterations with O(1) body operations. Total work: n * O(n) = O(n^2)."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f50_helper_in_loop_basic"
+  - "f50_helper_in_loop_while"
+  - "f50_helper_in_loop_vector"
+assumptions:
+  - "n is the single input symbol governing both the outer loop and the helper function loop."
+  - "Helper function executes Theta(n) work per call without early returns."
+  - "Inter-procedural composition: O(n) outer * O(n) inner = O(n^2)."

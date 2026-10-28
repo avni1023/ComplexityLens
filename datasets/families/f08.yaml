@@ -1,0 +1,12 @@
+family_idea: "Iterative loop multiplying index by 2 on each step up to input bound n."
+label: "OLOGN"
+label_rationale: "The loop variable doubles on each iteration (i *= 2), executing ceil(log2(n)) steps for an asymptotic complexity of O(log n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f08_for_doubling"
+  - "f08_while_doubling_helper"
+  - "f08_doubling_bitwise"
+assumptions:
+  - "Input n represents the loop iteration upper bound."

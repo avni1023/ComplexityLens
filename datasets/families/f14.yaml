@@ -1,0 +1,15 @@
+family_idea: "Accumulate the sum of all elements in an array or vector."
+label: "ON"
+label_rationale: "Accumulating the sum of elements in an array or vector of size n traverses each element exactly once in a single sequential pass, performing O(1) additions per element for an asymptotic complexity of O(n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f14_sum_array_for"
+  - "f14_sum_array_while"
+  - "f14_sum_array_helper"
+assumptions:
+  - "Input size n is the number of elements in the container."
+  - "Element addition executes in O(1) time."

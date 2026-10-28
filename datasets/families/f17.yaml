@@ -1,0 +1,15 @@
+family_idea: "Count the number of elements matching a predicate condition in a single pass."
+label: "ON"
+label_rationale: "Counting elements that satisfy a predicate requires inspecting every element of the size-n container exactly once, performing O(1) predicate evaluation and conditional increment per element, taking strictly O(n) time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f17_count_matching_for"
+  - "f17_count_matching_while"
+  - "f17_count_matching_helper"
+assumptions:
+  - "Input size n is the length of the container."
+  - "Predicate condition evaluates in O(1) constant time."
