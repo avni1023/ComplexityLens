@@ -102,3 +102,101 @@ Directory layout:
 - `verified`: (boolean) `false` until peer-reviewed.
 - `origin`: (string) Provenance classification (`hand_written`, `mutation`, or `unspecified`).
 - `source_sha256`: (string) 64-character hex SHA-256 digest under normalized policy.
+
+---
+
+## 6. Dataset Partitioning and Split Protocol (Day 9 Stage 2B)
+
+### 6.1 Two-Partition Model
+
+The ComplexityLens benchmark strictly adheres to a **two-partition model**:
+- **`development`**: 53 families (159 programs in Phase 2 inventory).
+- **`test`**: 15 families (45 programs in Phase 2 inventory).
+
+There is **NO** separate `train` partition. All cross-validation folds exist strictly inside the `development` partition.
+
+### 6.2 Cross-Validation Folds inside Development
+
+Cross-validation inside `development` uses **3 family-stratified folds** of deterministic sizes:
+- Fold 0: 18 families (54 programs)
+- Fold 1: 18 families (54 programs)
+- Fold 2: 17 families (51 programs)
+
+Each fold contains:
+- Exactly 1 `ON3` family
+- Exactly 1 `OEXP` family
+- Complete coverage of all 8 complexity classes (`O1`, `OLOGN`, `ON`, `ONLOGN`, `ON2`, `ON3`, `OEXP`, `UNKNOWN`) under Case A feasibility.
+
+#### Cross-Validation Allocation Outcomes:
+- **Case A (Optimal Stratification):** Exact fold capacities `(18, 18, 17)` are satisfied, and all 8 complexity classes are present in every fold.
+- **Case B (Stratification Deficit Fallback):** Exact fold capacities `(18, 18, 17)` and `ON3`/`OEXP` seeds are satisfied, but full 8-class coverage across all folds is mathematically impossible or unmet. Emits `STRATIFICATION_DEFICIT_WARNING` reporting per-fold missing classes, per-fold class counts, and `total_coverage_deficit` (total missing fold/class combinations). The reported deficit is the observed deficit of the deterministic greedy/backtracking allocator, not a proven minimal deficit.
+- **Case C (Cardinality Infeasibility):** Exact fold capacities `(18, 18, 17)` cannot be satisfied under indivisible atomic unit constraints. Raises `CardinalityInfeasibilityError`.
+
+#### Atomic-Unit CV Counting and Indivisibility Rules
+When assigning complete atomic units (singletons or multi-family split groups) to development folds:
+1. `ON3` and `OEXP` counts are evaluated strictly at the **family level** across the entire unit (`u.classes.count("ON3")` and `u.classes.count("OEXP")`).
+2. Atomic units remain completely indivisible. Any atomic unit containing $>1$ `ON3` families or $>1$ `OEXP` families immediately raises `InfeasibleSplitConstraintsError`, as assigning it to any single fold would violate the exact 1-per-fold requirement.
+3. A joint atomic unit containing 1 `ON3` and 1 `OEXP` family simultaneously fulfills both requirements for a single fold, leaving the remaining pure `ON3` and pure `OEXP` units to pair into the other two folds.
+4. Fold capacity enforcement strictly requires (18, 18, 17) families, using greedy assignment with deterministic symmetry breaking ($\text{rank\_sum}(\text{fold}_0) \le \text{rank\_sum}(\text{fold}_1)$) and exact backtracking bin-packing fallback.
+
+### 6.3 Hard Constraints for Test-Set Optimization
+
+1. Exactly 15 families in `test`.
+2. All 8 complexity classes present in `test`.
+3. Exactly 1 `ON3` family in `test` (leaving 3 for development, 1 per fold).
+4. Exactly 1 `OEXP` family in `test` (leaving 3 for development, 1 per fold).
+5. Exactly 3 `UNKNOWN` families in `test` (leaving 12 for development, 4 per fold).
+6. Family `f65` is locked to `development` (`f65` is UNKNOWN / data_dependent / rule_hard).
+7. At most 3 `rule_hard` families in `test` (which forces exactly 3, matching the 3 UNKNOWN families).
+8. Family atomicity: No family or approved atomic group is divided across partitions or folds.
+
+### 6.4 Lexicographic Objectives
+
+The test partition is chosen by exact branch-and-bound optimization with admissible 0-1 min-cost subset-sum dynamic programming:
+1. Maximize distinct UNKNOWN reasons in `test` (optimal: 3 distinct reasons).
+2. Minimize `abs(test_rule_hard_count - 3)` (optimal: 0).
+3. Minimize total unit rank sum: $\sum_{u \in T} \text{rank}(u)$, where $\text{rank}(u) = \text{int}(\text{SHA256}(f"{seed}:{unit\_key}")[:16], 16)$.
+4. Tie-break via canonical sorted family-ID tuple.
+
+### 6.5 Token Normalization Vocabulary (37 Tokens)
+
+To detect potential lexical leakage between development and test partitions without relying on variable names, lexical normalization uses a closed vocabulary of **37 tokens**:
+- **29 C++ Language Keywords:** `auto`, `bool`, `break`, `case`, `char`, `class`, `const`, `continue`, `default`, `do`, `double`, `else`, `false`, `float`, `for`, `goto`, `if`, `int`, `long`, `nullptr`, `return`, `short`, `sizeof`, `static`, `struct`, `switch`, `true`, `void`, `while`.
+- **8 Standard Library Identifiers:** `std`, `vector`, `string`, `size_t`, `unordered_map`, `unordered_set`, `set`, `map`.
+
+Any identifier not in this vocabulary is replaced with `ID`. 3-token shingles are computed, and cross-partition set Jaccard similarity must not exceed 0.85.
+
+### 6.6 Dual Hashing Policy
+
+Program records in the split manifest contain dual hashes for verification:
+- `source_sha256`: LF-normalized source text hash (used for semantic comparisons and dataset integrity).
+- `git_blob_sha256`: Git blob hash at HEAD (used for repository commit integrity tracking).
+
+### 6.7 Split Lifecycle and Freeze Gate
+
+1. **`propose`**: Proposes a deterministic split manifest without modifying files. Records `base_dataset_commit` (current HEAD) and sets `status = "proposed"`.
+2. **`validate`**: Validates manifest structure, cardinalities, coverage, and leakage constraints against the dataset on disk.
+3. **`freeze`**: Freezes a validated proposal manifest subject to strict hardening gates:
+   - **Frozen-File Overwrite Protection:** Pre-flight checks ensure that neither the destination frozen manifest JSON nor its `.sha256` sidecar exists on disk. If either file exists, execution halts immediately with `FreezeGateError` before any writes or computational steps. Existing files are preserved byte-identically, and no partial files are left behind.
+   - **Clean Tree Requirement:** Working tree must be completely clean (`git status --porcelain` is empty).
+   - **Git Ancestry Gate:** The `base_dataset_commit` must exist in the repository (`git cat-file -e`). Current HEAD must descend from or match `base_dataset_commit` (`git merge-base --is-ancestor <base> HEAD`).
+   - **Dataset/Governance Mutex Gate:** No modifications to `datasets/`, `docs/FAMILY_PLAN.md`, or `docs/audits/` are permitted between `base_dataset_commit` and HEAD (`git diff --name-only <base> HEAD`).
+   - **Committed Proposal Byte-Identity:** If the proposal JSON is committed in HEAD, its content must match the proposal being frozen.
+   - **Sidecar Checksum:** Upon passing all gates, records `proposal_commit = HEAD`, sets `status = "frozen"`, and writes canonical frozen JSON with a companion SHA-256 sidecar file (`<manifest>.sha256`).
+4. **`verify`**: Verifies that a frozen manifest matches its sidecar checksum and satisfies all dataset integrity rules.
+
+### 6.8 CLI Usage
+
+```bash
+# Propose a split and print summary
+complexity-lens dataset split propose
+
+# Validate a split manifest
+complexity-lens dataset split validate data/splits/split_manifest_v1.0.proposed.json
+
+# Freeze a proposal manifest (requires clean git working tree)
+complexity-lens dataset split freeze data/splits/split_manifest_v1.0.proposed.json --out data/splits/split_manifest_v1.0.frozen.json
+
+# Verify a frozen manifest and checksum sidecar
+complexity-lens dataset split verify data/splits/split_manifest_v1.0.frozen.json
+```
