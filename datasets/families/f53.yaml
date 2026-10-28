@@ -1,0 +1,12 @@
+family_idea: "Two-pointer convergence from opposing ends of an array or vector."
+label: "ON"
+label_rationale: "On each iteration, either left index increments or right index decrements, guaranteeing that pointers meet in at most n steps for O(n) worst-case time complexity."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f53_two_sum_sorted"
+  - "f53_container_most_water"
+  - "f53_palindrome_check"
+assumptions:
+  - "Input size is array length n; pointers advance monotonically toward each other."

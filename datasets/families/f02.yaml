@@ -1,0 +1,15 @@
+family_idea: "Accumulate values in a loop with a fixed bound of 10 iterations."
+label: "O1"
+label_rationale: "The loop executes a fixed number of 10 iterations regardless of any input parameter, taking strictly O(1) constant time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f02_fixed_for_accumulate"
+  - "f02_fixed_while_accumulate"
+  - "f02_fixed_for_helper"
+assumptions:
+  - "Loop executes a fixed number of 10 iterations independent of any input parameter."
+  - "Primitive arithmetic and accumulation operations take O(1) time."

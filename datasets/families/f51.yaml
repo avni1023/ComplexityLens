@@ -1,0 +1,16 @@
+family_idea: "An explicit loop running n times calling std::count over a container of size n, giving O(n^2) via STL composition."
+label: "ON2"
+label_rationale: "The outer loop runs n times. In each iteration, std::count linearly inspects all n elements of the container taking O(n) comparisons. Total work is n * O(n) = O(n^2)."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f51_count_in_loop_basic"
+  - "f51_count_in_loop_while"
+  - "f51_count_in_loop_helper"
+assumptions:
+  - "n is the size of the container v (SINGLE_INPUT_SYMBOL)."
+  - "std::count on a sequence of size n performs exactly n element comparisons."
+  - "Outer loop runs n times: total complexity is n * O(n) = O(n^2)."

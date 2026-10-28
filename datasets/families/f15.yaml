@@ -1,0 +1,12 @@
+family_idea: "Find the maximum element in an array or vector through a single linear scan."
+label: "ON"
+label_rationale: "Scanning each element of a collection of size n exactly once performs n - 1 comparisons for an asymptotic complexity of O(n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f15_max_element_for"
+  - "f15_max_element_helper"
+  - "f15_max_element_while"
+assumptions:
+  - "Comparison between elements takes O(1) time; input size is container length n."

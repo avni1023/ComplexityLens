@@ -1,0 +1,12 @@
+family_idea: "Fixed-size sliding window maintain running sum of window k across sequence of length n."
+label: "ON"
+label_rationale: "Initial window of size k takes O(k) steps; each of the remaining n - k slides updates running sum in O(1) operations, yielding O(k + (n - k)) = O(n) worst-case time complexity."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+programs:
+  - "f54_sliding_window_max_sum"
+  - "f54_sliding_window_helper"
+  - "f54_sliding_window_vector_result"
+assumptions:
+  - "Window size k satisfies 1 <= k <= n; input size is container length n."

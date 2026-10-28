@@ -1,0 +1,12 @@
+family_idea: "Merge-sort style divide-and-conquer recursion over ranges with linear merge step."
+label: "ONLOGN"
+label_rationale: "Recurrence T(n) = 2T(n/2) + O(n) divides problem in half at each step with linear work per level, resolving to O(n log n) by the Master theorem."
+tag: "rule_hard"
+expected_parse: "valid"
+programs:
+  - "mergesort_range_recurse"
+  - "mergesort_index_split"
+  - "mergesort_subrange_vector"
+  - "mergesort_halving_linear_merge"
+assumptions:
+  - "Range halving creates recursion tree of depth log2(n) where each level combines elements with O(n) total linear work."

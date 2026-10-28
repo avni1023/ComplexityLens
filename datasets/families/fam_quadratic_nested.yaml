@@ -1,0 +1,12 @@
+family_idea: "Doubly-nested loops iterating up to n, performing independent or triangular pair combinations."
+label: "ON2"
+label_rationale: "Two nested loops each iterating O(n) times perform n*(n-1)/2 or n^2 iterations, yielding worst-case time complexity O(n^2)."
+tag: "easy"
+expected_parse: "valid"
+programs:
+  - "nested_independent_matrix"
+  - "nested_triangular_pairs"
+  - "nested_bubble_pass"
+  - "nested_duplicate_check"
+assumptions:
+  - "Outer loop executes n times and inner loop executes up to n times with O(1) body operations."

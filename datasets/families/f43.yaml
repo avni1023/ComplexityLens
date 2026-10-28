@@ -1,0 +1,16 @@
+family_idea: "Naive recursive Fibonacci with two recursive calls per step: fib(n) = fib(n-1) + fib(n-2)."
+label: "OEXP"
+label_rationale: "Recurrence T(n) = T(n-1) + T(n-2) + O(1). The recursion tree has depth n and each node branches into two subtrees; the number of leaves is the (n+1)-th Fibonacci number ~ phi^n = O(phi^n) where phi = (1 + sqrt(5))/2 ~ 1.618. Since phi < 2, this is a specific exponential: Theta(phi^n) = O(2^n) (coarse exponential class OEXP)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f43_naive_fib_basic"
+  - "f43_naive_fib_ternary"
+  - "f43_naive_fib_helper"
+assumptions:
+  - "n is the integer argument to fib(); no memoization or tail recursion optimization."
+  - "Two recursive self-calls per level: T(n) = T(n-1) + T(n-2) + O(1)."
+  - "OEXP is the coarse exponential class; the exact base is phi ~ 1.618."

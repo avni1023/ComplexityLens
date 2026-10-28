@@ -563,24 +563,48 @@ class ComplexityEngine:
                 else (ComplexityClass.constant(), Exactness.STRUCTURAL)
             )
 
-            branch_class = dominant(then_class, else_class)
+            branch_body_class = dominant(then_class, else_class)
             ctx.add_reason(ReasonCode.IF_ELSE_WORST_CASE.value)
             ctx.add_rule_trace(
                 rule_id="RULE_IF_ELSE_WORST_CASE",
                 node_ids=[item.id],
                 input_classes=[then_class, else_class],
-                output_class=branch_class,
+                output_class=branch_body_class,
             )
 
-            if branch_class.is_unknown:
-                branch_exact = Exactness.UNKNOWN
-            elif (
-                then_exactness == Exactness.UPPER_BOUND
-                or else_exactness == Exactness.UPPER_BOUND
-            ):
-                branch_exact = Exactness.UPPER_BOUND
+            if item.condition_items:
+                cond_class, cond_exactness = self._analyze_block(
+                    item.condition_items, ctx, program, subst_sccs, subst_visited, depth
+                )
+                branch_class = dominant(cond_class, branch_body_class)
+                ctx.add_reason(ReasonCode.SEQUENTIAL_COMPOSITION.value)
+                ctx.add_rule_trace(
+                    rule_id="RULE_SEQUENTIAL_COMPOSITION",
+                    node_ids=[item.id],
+                    input_classes=[cond_class, branch_body_class],
+                    output_class=branch_class,
+                )
+                if branch_class.is_unknown:
+                    branch_exact = Exactness.UNKNOWN
+                elif (
+                    cond_exactness == Exactness.UPPER_BOUND
+                    or then_exactness == Exactness.UPPER_BOUND
+                    or else_exactness == Exactness.UPPER_BOUND
+                ):
+                    branch_exact = Exactness.UPPER_BOUND
+                else:
+                    branch_exact = Exactness.STRUCTURAL
             else:
-                branch_exact = Exactness.STRUCTURAL
+                branch_class = branch_body_class
+                if branch_class.is_unknown:
+                    branch_exact = Exactness.UNKNOWN
+                elif (
+                    then_exactness == Exactness.UPPER_BOUND
+                    or else_exactness == Exactness.UPPER_BOUND
+                ):
+                    branch_exact = Exactness.UPPER_BOUND
+                else:
+                    branch_exact = Exactness.STRUCTURAL
 
             return branch_class, branch_exact, item.id
 

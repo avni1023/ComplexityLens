@@ -1,0 +1,15 @@
+family_idea: "Sort vector with std::sort followed by n logarithmic queries using std::lower_bound."
+label: "ONLOGN"
+label_rationale: "Sorting an array of length n takes O(n log n) comparisons; performing n independent binary search queries via std::lower_bound takes n * O(log n) = O(n log n). The sum of both phases is O(n log n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f26_sort_lower_bound_indices"
+  - "f26_sort_lower_bound_helper"
+  - "f26_sort_lower_bound_ranges"
+assumptions:
+  - "std::sort takes O(n log n); std::lower_bound on random-access iterators takes O(log n) comparisons."
+  - "Input size n is vector length."

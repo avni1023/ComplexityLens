@@ -1,0 +1,21 @@
+family_idea: "Syntactically valid programs containing external calls, unsupported constructs (inline assembly), or data-dependent modulo reductions."
+label: "UNKNOWN"
+label_rationale: "Analysis must abstain because loop costs are masked by opaque external calls, unsupported low-level constructs, or input-value dependent Euclidean steps."
+tag: "rule_hard"
+expected_parse: "has_unsupported_constructs"
+programs:
+  - "unknown_external_opaque_call"
+  - "unknown_inline_asm_construct"
+  - "unknown_euclidean_gcd"
+assumptions:
+  - "External functions have no visible body; unsupported constructs cannot be modeled by the static IR; Euclidean algorithm depends on specific integer values."
+program_annotations:
+  unknown_external_opaque_call:
+    unknown_reason: "external_call"
+    explanation: "Function invokes an external opaque function external_worker inside a loop whose cost cannot be analyzed from this translation unit."
+  unknown_inline_asm_construct:
+    unknown_reason: "unsupported_construct"
+    explanation: "Function contains an inline assembly (__asm__) statement which is syntactically valid C++ but deliberately unsupported for static complexity analysis."
+  unknown_euclidean_gcd:
+    unknown_reason: "data_dependent"
+    explanation: "Euclidean algorithm loop trip count is governed by numerical value magnitudes and remainder sequences of arguments a and b."

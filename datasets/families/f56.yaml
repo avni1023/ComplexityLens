@@ -1,0 +1,16 @@
+family_idea: "Euclid's GCD algorithm: while(b != 0) { a = b; b = a % b; }, where the rule-hard aspect is that the number of steps shrinks geometrically via the remainder sequence."
+label: "OLOGN"
+label_rationale: "By Lame's theorem, Euclid's algorithm performs at most 5 * floor(log10(min(a,b))) + 1 steps. Each remainder is strictly less than half of the preceding dividend, so the sequence length is O(log(min(a,b))). With n = max(a, b) as the single input symbol, this is O(log n)."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f56_gcd_euclid_while"
+  - "f56_gcd_euclid_for"
+  - "f56_gcd_euclid_helper"
+assumptions:
+  - "n is the single input symbol; treat n = max(a, b) or the larger argument."
+  - "The remainder shrinks by at least half every two steps (Lame's theorem)."
+  - "O(log n) steps, each O(1): total T(n) = O(log n)."

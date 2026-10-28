@@ -1,0 +1,24 @@
+family_idea: "std::sort with an inline lambda comparator containing internal loop control flow."
+label: "UNKNOWN"
+label_rationale: "Invoking std::sort with a custom lambda comparator containing an internal loop is syntactically valid C++ but deliberately unsupported by the static complexity analyzer IR, forcing an abstention with unsupported_construct."
+tag: "rule_hard"
+expected_parse: "has_unsupported_constructs"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f62_sort_lambda_loop_comp"
+  - "f62_sort_lambda_digit_sum"
+  - "f62_sort_lambda_divisor_count"
+assumptions:
+  - "Custom lambda comparators with internal loops are valid C++ but deliberately unsupported for static complexity analysis."
+program_annotations:
+  f62_sort_lambda_loop_comp:
+    unknown_reason: "unsupported_construct"
+    explanation: "Lambda comparator passed to std::sort contains an internal while loop, which is an unsupported construct in static IR."
+  f62_sort_lambda_digit_sum:
+    unknown_reason: "unsupported_construct"
+    explanation: "std::sort uses a lambda comparator with an internal digit accumulation loop, which static complexity analysis abstains from modeling."
+  f62_sort_lambda_divisor_count:
+    unknown_reason: "unsupported_construct"
+    explanation: "Comparator lambda contains a divisor-counting for loop, triggering static analyzer abstention on unsupported comparator construct."

@@ -39,4 +39,17 @@
   - Modular shared structural helpers (`loop_classification.py`, `entry_point.py`, `container_classification.py`)
   - No ML dependencies and no imports of top-level complexity engine analysis
   - 28 new tests in `tests/test_features.py` (346 total tests passing)
-- [ ] **Day 7: Dataset Tooling & Week 1 Gate**
+- [x] **Day 7: Dataset Tooling & Week 1 Gate**
+  - Dataset schema specifications: family YAML, program records, and deterministic `source_sha256` hashing policy in `docs/DATASET.md`
+  - Independent ground-truth separation: historical Phase A labels-only commit (`f23df075...`) preceding tooling implementation
+  - Core dataset module in `src/complexity_lens/dataset.py` with loader, schema validator, duplicate detection, and parser checks
+  - CLI commands: `dataset report` and `dataset check-agreement` with machine-readable JSON export
+  - Week 1 gate verification: 63.2% agreement baseline across 38 programs with documented rationale review for all 14 engine abstentions in `docs/DATASET_REVIEW.md`
+  - 34 new tests across `tests/test_dataset.py` and `tests/test_cli.py` (380 total tests passing)
+- [x] **Day 8: Dataset Finalization & Benchmark Expansion**
+  - Expanded benchmark to 78 families and 242 programs (68 new families `f01`–`f68` with 204 hand-written programs; 10 legacy baseline families with 38 programs)
+  - Added program `origin` tracking (`hand_written`, `mutation`, `unspecified`) to schema, models, validator, and CLI reports
+  - Rigorous Phase 2 dataset governance audit across Groups A through E, including full audit of all 10 UNKNOWN families (`f59`–`f68`) across 5 batches
+  - Formally approved dataset governance policies in `docs/audits/DATASET_GOVERNANCE_DECISIONS.md` preserving legacy baseline and canonical family plan
+  - CLI `dataset report` verified across all 242 programs: 0 schema errors, 0 duplicates, 242/242 parser validity pass
+  - Full test suite passing (380/380 unit and regression tests green)

@@ -1,0 +1,14 @@
+family_idea: "Nested loops with constant compile-time bounds executing fixed 10x10 iterations."
+label: "O1"
+label_rationale: "Both outer and inner loops iterate exactly 10 times regardless of input parameters, performing a fixed 100 iterations in O(1) constant time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f03_const_nested_grid"
+  - "f03_const_nested_while"
+  - "f03_const_nested_helper"
+assumptions:
+  - "Outer and inner loops execute fixed constant number of iterations (10x10), independent of any input parameter."

@@ -1,0 +1,15 @@
+family_idea: "Vector sorting using std::sort followed by linear accumulation."
+label: "ONLOGN"
+label_rationale: "Sorting a vector of length n with std::sort takes O(n log n) worst-case time, which asymptotically dominates the subsequent O(n) linear accumulation pass, yielding O(n log n) overall."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f23_sort_then_sum_basic"
+  - "f23_sort_then_sum_helper"
+  - "f23_sort_then_weighted_sum"
+assumptions:
+  - "std::sort uses introsort with O(n log n) worst-case time complexity on random-access vector iterators."
+  - "Input size n is vector length."

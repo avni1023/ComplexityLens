@@ -394,6 +394,34 @@ class TestExplicitSyntaxVariants:
         assert len(stl_ops) == 1
         assert stl_ops[0].operation == STLOperationKind.PUSH_BACK
         assert stl_ops[0].container == "v"
+        assert stl_ops[0].arguments == ["x"]
+
+    def test_member_call_arguments_and_pointer_syntax(self):
+        code = """
+        #include <vector>
+        void ops(std::vector<int>& v, std::vector<int>* ptr, int x) {
+            v.push_back(x);
+            ptr->push_back(x);
+            v.insert(v.begin(), x);
+        }
+        """
+        from complexity_lens.parsers.cpp_libclang import get_configured_cxx_include_dirs
+        if not get_configured_cxx_include_dirs() and not os.environ.get("CXX_INCLUDE_DIRS"):
+            pytest.skip("STL headers not configured in CXX_INCLUDE_DIRS")
+
+        prog = build_ir_from_source(code)
+        fn = prog.functions[0]
+        stl_ops = fn.all_stl_ops()
+        assert len(stl_ops) == 3
+        # 1. v.push_back(x) -> args should be ['x'], NOT ['v.push_back', 'x']
+        assert stl_ops[0].arguments == ["x"]
+        assert stl_ops[0].container == "v"
+        # 2. ptr->push_back(x) -> args should be ['x'], NOT ['ptr->push_back', 'x']
+        assert stl_ops[1].arguments == ["x"]
+        assert stl_ops[1].container == "ptr"
+        # 3. v.insert(v.begin(), x) -> args should be ['v.begin()', 'x']
+        assert stl_ops[2].arguments == ["v.begin()", "x"]
+        assert stl_ops[2].container == "v"
 
 
 # ---------------------------------------------------------------------------

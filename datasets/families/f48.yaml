@@ -1,0 +1,17 @@
+family_idea: "Loop bounded by size() minus a small literal constant, e.g. for(i < v.size() - 2), where the rule-hard aspect is the shifted bound from the container size."
+label: "ON"
+label_rationale: "v.size() - 2 = n - 2 where n = v.size(). The loop executes n - 2 iterations, each O(1). By big-O, T(n) = (n-2) * O(1) = O(n). The constant offset 2 is dominated and absorbed."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f48_size_minus_literal_for"
+  - "f48_size_minus_literal_while"
+  - "f48_size_minus_literal_helper"
+assumptions:
+  - "n = v.size() is the container size (single input symbol)."
+  - "Literal offset 2 (or similar small constant) is fixed at compile time."
+  - "n - 2 = Theta(n), so the loop is O(n)."
+  - "v is non-empty with at least 2 elements; the guard prevents underflow."

@@ -1,0 +1,26 @@
+family_idea: "Calls a declared-but-not-defined external function process(n) inside a loop; the body of process() is invisible to the static analyzer."
+label: "UNKNOWN"
+label_rationale: "The function process(n) is declared only (no definition visible); its time complexity is completely opaque to static analysis. Even if the outer loop bound is known to be O(n), the cost of each process(n) call is unknown. Static analysis must abstain: unknown_reason is 'external_call'."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f63_external_call_in_loop"
+  - "f63_external_call_while_loop"
+  - "f63_external_call_helper_wrap"
+assumptions:
+  - "process(n) is declared but has no visible definition; its complexity is opaque."
+  - "The parser does not require a function body to accept a declaration (valid parse)."
+  - "Per the plan: f63 and f66 share the external_call reason but differ in structure."
+program_annotations:
+  f63_external_call_in_loop:
+    unknown_reason: "external_call"
+    explanation: "process(n) is declared only; its definition is outside the analyzed code. Static analysis cannot determine the cost of each call, so the total complexity is unknown."
+  f63_external_call_while_loop:
+    unknown_reason: "external_call"
+    explanation: "while-loop variant calling declared-only external transform(v, n); the function body is not visible, making the per-iteration cost and total complexity unknowable statically."
+  f63_external_call_helper_wrap:
+    unknown_reason: "external_call"
+    explanation: "A wrapper helper delegates to the declared-only external process(n); the helper body is visible but its callee is opaque, so static analysis cannot resolve the total complexity."

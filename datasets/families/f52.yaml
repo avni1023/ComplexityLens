@@ -1,0 +1,15 @@
+family_idea: "Nested loops with conditional break on rare condition where worst case does not break."
+label: "ON2"
+label_rationale: "In the worst-case scenario, the rare break condition is never triggered (e.g. search target absent or threshold exceeded). Both outer and inner loops iterate n times, executing n^2 operations for O(n^2) worst-case time complexity."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f52_nested_break_for"
+  - "f52_nested_break_while"
+  - "f52_nested_break_helper"
+assumptions:
+  - "Worst case occurs when break condition is not satisfied; both loops execute up to n iterations."
+  - "Input size n is container length or loop bound."

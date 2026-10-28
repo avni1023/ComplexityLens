@@ -1,0 +1,16 @@
+family_idea: "Binary search on sorted vector using std::lower_bound."
+label: "OLOGN"
+label_rationale: "std::lower_bound over random-access iterators of a sorted vector of size n executes at most ceil(log2(n)) + 1 comparisons, taking strictly O(log n) logarithmic time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f12_lower_bound_basic"
+  - "f12_lower_bound_boolean"
+  - "f12_lower_bound_helper"
+assumptions:
+  - "Input vector is sorted and iterators satisfy the random access iterator requirements."
+  - "std::lower_bound performs logarithmic comparisons on random access iterators."
+  - "Input size n is container length."

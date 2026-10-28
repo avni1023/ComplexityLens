@@ -1,0 +1,15 @@
+family_idea: "Element frequency counting using std::unordered_map."
+label: "ON"
+label_rationale: "Populating an unordered map across n elements performs n insertions and lookups, each taking expected O(1) time under the HASH_AVERAGE_CASE cost model, yielding O(n) average-case time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f21_freq_count_basic"
+  - "f21_freq_count_find_insert"
+  - "f21_freq_count_most_frequent"
+assumptions:
+  - "HASH_AVERAGE_CASE: std::unordered_map lookup and insertion execute in expected O(1) time."
+  - "Input size n is the number of elements in the collection."

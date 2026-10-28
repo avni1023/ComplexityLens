@@ -1,0 +1,26 @@
+family_idea: "Invokes a function pointer inside a loop; dynamic dispatch via function pointers is unsupported by static analysis."
+label: "UNKNOWN"
+label_rationale: "A function pointer (e.g. void (*fn)(int)) is passed into the function and invoked on each iteration. Static analysis cannot determine the concrete callee target or its complexity from local syntax. The static IR does not support function pointer resolution: unknown_reason is 'unsupported_construct'."
+tag: "rule_hard"
+expected_parse: "has_unsupported_constructs"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f64_func_ptr_in_loop_basic"
+  - "f64_func_ptr_in_loop_while"
+  - "f64_func_ptr_in_loop_helper"
+assumptions:
+  - "Function pointer target is provided at runtime."
+  - "Static analysis cannot resolve the pointee or bound its execution cost."
+  - "Syntactically valid C++ marked as has_unsupported_constructs in expected_parse."
+program_annotations:
+  f64_func_ptr_in_loop_basic:
+    unknown_reason: "unsupported_construct"
+    explanation: "Dynamic invocation through function pointer fn(x) inside a for-loop; callee target cannot be resolved statically."
+  f64_func_ptr_in_loop_while:
+    unknown_reason: "unsupported_construct"
+    explanation: "While-loop invokes a typedef function pointer operation; target complexity is opaque to static analysis."
+  f64_func_ptr_in_loop_helper:
+    unknown_reason: "unsupported_construct"
+    explanation: "A helper function receives and invokes a function pointer; opaqueness of dynamic dispatch propagates through helper."

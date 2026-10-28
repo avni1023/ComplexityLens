@@ -1,0 +1,15 @@
+family_idea: "Sort vector with std::sort followed by two-pointer pair-sum scan."
+label: "ONLOGN"
+label_rationale: "Sorting an array of length n takes O(n log n) comparisons; the subsequent two-pointer convergence scan takes at most n steps (O(n)). The sort phase asymptotically dominates, yielding O(n log n) overall."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f29_sort_two_pointer_pair_sum"
+  - "f29_sort_two_pointer_closest"
+  - "f29_sort_two_pointer_helper"
+assumptions:
+  - "std::sort takes O(n log n) worst-case time; two-pointer convergence takes at most n steps."
+  - "Input size n is vector length."

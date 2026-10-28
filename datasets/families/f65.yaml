@@ -1,0 +1,25 @@
+family_idea: "Recursive divide-and-conquer function whose split index is derived from runtime data values."
+label: "UNKNOWN"
+label_rationale: "The partition split point in the recursive recurrence is determined by array content values rather than predictable arithmetic division (e.g. (lo + hi)/2). The irregular and data-dependent recurrence tree cannot be resolved statically: unknown_reason is 'irregular_recursion'."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f65_recursion_data_split_basic"
+  - "f65_recursion_data_split_offset"
+  - "f65_recursion_data_split_helper"
+assumptions:
+  - "Data array contains runtime integers governing recursive split boundaries."
+  - "Static recurrence templates require regular arithmetic splits (e.g. n - c or n / c) to establish bounds."
+program_annotations:
+  f65_recursion_data_split_basic:
+    unknown_reason: "irregular_recursion"
+    explanation: "Recursive split point is determined by array content arr[lo], creating a data-dependent recurrence branching pattern."
+  f65_recursion_data_split_offset:
+    unknown_reason: "irregular_recursion"
+    explanation: "Subarray partition point depends on modulo arithmetic over array element value data[mid], yielding irregular recursion."
+  f65_recursion_data_split_helper:
+    unknown_reason: "irregular_recursion"
+    explanation: "Partition split candidate is computed by helper reading runtime vector elements, which static recurrence analysis cannot model."

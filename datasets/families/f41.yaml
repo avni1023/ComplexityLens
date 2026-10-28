@@ -1,0 +1,16 @@
+family_idea: "Floyd-Warshall all-pairs shortest paths algorithm using three nested loops of size V."
+label: "ON3"
+label_rationale: "Three nested loops over vertices k, i, j from 0 to V-1. Single input size symbol is n = V (number of vertices, SINGLE_INPUT_SYMBOL). Matrix dist is V x V. Total relaxation steps: V * V * V = V^3 = n^3 = ON3."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f41_floyd_warshall_basic"
+  - "f41_floyd_warshall_while"
+  - "f41_floyd_warshall_helper"
+assumptions:
+  - "n = V is the single input size symbol representing the number of vertices (SINGLE_INPUT_SYMBOL)."
+  - "The graph is represented as an n x n adjacency/distance matrix."
+  - "Each relaxation dist[i][j] = min(dist[i][j], dist[i][k] + dist[k][j]) is O(1)."

@@ -533,12 +533,22 @@ def _analyze_call(
                     break
 
         full_callee = f"std::{clean_callee}"
+        args: list[str] = []
+        for c in call_node.children:
+            text = "".join(c.tokens) if c.tokens else c.spelling
+            text = text.strip()
+            if text:
+                args.append(text)
+        callee_aliases = (callee, clean_callee, f"std::{clean_callee}", f"::std::{clean_callee}")
+        if args and args[0] in callee_aliases:
+            args = args[1:]
+
         return STLOperationIR(
             id=node_id,
             operation=op_kind,
             callee_name=full_callee,
             container=container,
-            arguments=[c.spelling for c in call_node.children if c.spelling],
+            arguments=args,
             span=span,
             container_kind_source="source_text" if container else None,
         )
@@ -550,12 +560,26 @@ def _analyze_call(
         first_ref = next((c for c in call_node.all_nodes() if c.kind == "DECL_REF_EXPR"), None)
         if first_ref and first_ref.spelling != callee:
             container = first_ref.spelling
+        args = []
+        for c in call_node.children:
+            text = "".join(c.tokens) if c.tokens else c.spelling
+            text = text.strip()
+            if text:
+                args.append(text)
+        callee_aliases = (callee, clean_callee, f"std::{clean_callee}", f"::std::{clean_callee}")
+        if args and (
+            args[0] in callee_aliases
+            or args[0].endswith(f".{clean_callee}")
+            or args[0].endswith(f"->{clean_callee}")
+        ):
+            args = args[1:]
+
         return STLOperationIR(
             id=node_id,
             operation=op_kind,
             callee_name=clean_callee,
             container=container,
-            arguments=[c.spelling for c in call_node.children if c.spelling],
+            arguments=args,
             span=span,
             container_kind_source="source_text" if container else None,
         )
@@ -889,6 +913,7 @@ def _build_body_items(
             branch_id = ctx.next_id("branch")
             c_list = child.children
             cond_expr = "condition"
+            condition_items: list[Any] = []
             then_body: list[Any] = []
             else_body: list[Any] = []
             if c_list:
@@ -897,6 +922,18 @@ def _build_body_items(
                     " ".join(cond_node.tokens)
                     if cond_node.tokens
                     else cond_node.spelling or "condition"
+                )
+                cond_wrapper = ASTNode(
+                    kind="COMPOUND_STMT",
+                    spelling="",
+                    loc=cond_node.loc,
+                    extent_start=cond_node.extent_start,
+                    extent_end=cond_node.extent_end,
+                    depth=cond_node.depth,
+                    children=[cond_node],
+                )
+                condition_items = _build_body_items(
+                    cond_wrapper, ctx, current_depth, outer_vars
                 )
                 if len(c_list) >= 2:
                     then_node = c_list[1]
@@ -947,6 +984,7 @@ def _build_body_items(
                     then_body=then_body,
                     else_body=else_body,
                     span=_span(child),
+                    condition_items=condition_items,
                 )
             )
 
@@ -1117,39 +1155,77 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                 continue
             if "cin" in toks and ">>" in toks:
                 try:
-                    idx = toks.index(">>")
-                    for tok in toks[idx + 1:]:
-                        if tok.isidentifier() and tok not in ("cin", "std"):
-                            cin_vars.add(tok)
-                            break
-                except ValueError:
+                    for i, tok in enumerate(toks):
+                        if tok == ">>" and i + 1 < len(toks):
+                            next_tok = toks[i + 1]
+                            if next_tok.isidentifier() and next_tok not in ("cin", "std"):
+                                cin_vars.add(next_tok)
+                                assigned_counts[next_tok] = assigned_counts.get(next_tok, 0) + 1
+                except Exception:
                     pass
             if n.kind == "VAR_DECL" and n.spelling:
                 var_name = n.spelling
                 ckind = detect_container_kind(n.type_spelling or " ".join(toks))
                 if ckind:
                     container_types[var_name] = ckind
-                if any(k in toks for k in ("const", "constexpr")):
-                    local_named_constants.add(var_name)
-                elif "=" in toks:
+                if "=" in toks:
                     eq_idx = toks.index("=")
-                    if eq_idx + 1 < len(toks) and toks[eq_idx + 1].isdigit():
-                        val = int(toks[eq_idx + 1])
+                    val_str = toks[eq_idx + 1] if eq_idx + 1 < len(toks) else ""
+                    if val_str.isdigit():
+                        val = int(val_str)
                         local_constants[var_name] = val
                         initial_values[var_name] = val
                         assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
+                    elif val_str == "-" and eq_idx + 2 < len(toks) and toks[eq_idx + 2].isdigit():
+                        val = -int(toks[eq_idx + 2])
+                        local_constants[var_name] = val
+                        initial_values[var_name] = val
+                        assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
+                    else:
+                        rhs_toks = toks[eq_idx + 1 :]
+                        if any(
+                            tok in param_names
+                            or tok in cin_vars
+                            or tok in top_level_named_constants
+                            for tok in rhs_toks
+                        ):
+                            local_named_constants.add(var_name)
+                        assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
+                elif any(k in toks for k in ("const", "constexpr")):
+                    local_named_constants.add(var_name)
+                    assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
                 else:
                     assigned_counts[var_name] = assigned_counts.get(var_name, 0)
-            elif n.kind in ("COMPOUND_ASSIGNMENT_OPERATOR", "UNARY_OPERATOR", "BINARY_OPERATOR"):
-                if any(op in toks for op in ("++", "--", "+=", "-=", "*=", "/=", "%=", "=")):
-                    for var in list(local_constants.keys()):
-                        if var in toks:
-                            assigned_counts[var] = assigned_counts.get(var, 0) + 1
+            elif n.kind == "UNARY_OPERATOR" and any(op in toks for op in ("++", "--")):
+                for tok in toks:
+                    if tok.isidentifier() and tok not in ("++", "--"):
+                        assigned_counts[tok] = assigned_counts.get(tok, 0) + 1
+            elif n.kind == "COMPOUND_ASSIGNMENT_OPERATOR":
+                for op in ("+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="):
+                    if op in toks:
+                        idx = toks.index(op)
+                        for tok in toks[:idx]:
+                            if tok.isidentifier():
+                                assigned_counts[tok] = assigned_counts.get(tok, 0) + 1
+                        break
+            elif (
+                n.kind == "BINARY_OPERATOR"
+                and "=" in toks
+                and not any(cmp_op in toks for cmp_op in ("==", "<=", ">=", "!="))
+            ):
+                try:
+                    idx = toks.index("=")
+                    for tok in toks[:idx]:
+                        if tok.isidentifier():
+                            assigned_counts[tok] = assigned_counts.get(tok, 0) + 1
+                except ValueError:
+                    pass
 
         for var, cnt in assigned_counts.items():
             if cnt > 1:
                 multiply_assigned.add(var)
                 local_constants.pop(var, None)
+                local_named_constants.discard(var)
 
         ctx = _IRBuilderContext(
             enclosing_func_name=f_name,

@@ -1,0 +1,15 @@
+family_idea: "Triangular nested loops where inner loop runs up to outer loop index j < i."
+label: "ON2"
+label_rationale: "Nested loops evaluate index pairs with inner bound j < i. Across all iterations, the inner loop executes 0 + 1 + 2 + ... + (n - 1) = n(n - 1) / 2 steps, performing quadratic work in strictly O(n^2) worst-case time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f31_triangular_for"
+  - "f31_triangular_while"
+  - "f31_triangular_helper"
+assumptions:
+  - "Input parameter n represents the iteration upper bound for the outer loop."
+  - "Work per inner loop iteration is O(1)."

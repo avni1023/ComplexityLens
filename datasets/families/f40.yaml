@@ -1,0 +1,16 @@
+family_idea: "Triple nested loop checking whether any three distinct elements sum to a target."
+label: "ON3"
+label_rationale: "Three nested loops over a container of size n. Outer loop runs n times, middle runs up to n, inner runs up to n. Summing distinct triples takes n*(n-1)*(n-2)/6 operations in the worst case, which is Theta(n^3) = ON3."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f40_triple_sum_basic"
+  - "f40_triple_sum_while"
+  - "f40_triple_sum_helper"
+assumptions:
+  - "n is the size of the input array/vector (SINGLE_INPUT_SYMBOL)."
+  - "Triple-nested scan visits distinct index triples (i < j < k)."
+  - "Each triple comparison is O(1); total worst-case work is Theta(n^3)."

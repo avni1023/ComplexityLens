@@ -1,0 +1,16 @@
+family_idea: "For each element in collection A, perform std::find in collection B."
+label: "ON2"
+label_rationale: "Iterates through collection A of size n, invoking std::find over collection B of size n on each iteration. In the worst case (e.g. disjoint sets), each std::find traverses all n elements of B, executing n * O(n) = O(n^2) total operations under the SINGLE_INPUT_SYMBOL convention."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f37_find_in_collection_for"
+  - "f37_find_in_collection_while"
+  - "f37_find_in_collection_helper"
+assumptions:
+  - "Both collections A and B have size bounded by single input symbol n (SINGLE_INPUT_SYMBOL)."
+  - "std::find performs a linear scan of up to n elements in collection B."
+  - "Worst-case time complexity is evaluated when no elements of A are present in B."

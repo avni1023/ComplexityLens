@@ -1,0 +1,16 @@
+family_idea: "Single loop bounded by an intermediate variable m = n/2, where the rule-hard aspect is that the bound is not n directly but an expression derived from n."
+label: "ON"
+label_rationale: "m = n/2 is a linear function of n. The loop executes m = n/2 iterations with O(1) work each, giving T(n) = n/2 * O(1) = O(n). The constant factor 1/2 is absorbed by big-O notation."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f47_half_bound_for"
+  - "f47_half_bound_while"
+  - "f47_half_bound_helper"
+assumptions:
+  - "n is the input integer parameter representing the collection or loop upper bound."
+  - "m = n/2 uses integer division; the loop runs floor(n/2) times, which is Theta(n)."
+  - "Constant factor 1/2 is absorbed into O(n): T(n) = O(n/2) = O(n)."

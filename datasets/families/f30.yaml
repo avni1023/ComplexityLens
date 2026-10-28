@@ -1,0 +1,15 @@
+family_idea: "Traverse an n-by-n matrix using doubly-nested loops."
+label: "ON2"
+label_rationale: "Nested loops where both outer and inner loops iterate up to n execute exactly n * n = n^2 iterations, each performing O(1) work, yielding strictly O(n^2) quadratic time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f30_matrix_nested_for"
+  - "f30_matrix_nested_while"
+  - "f30_matrix_row_helper"
+assumptions:
+  - "Input parameter n represents matrix dimension; work per cell is O(1)."
+  - "Outer loop executes n iterations, and inner loop executes n iterations for each outer iteration."

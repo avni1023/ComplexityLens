@@ -1,0 +1,16 @@
+family_idea: "Tower of Hanoi: move n disks from source to target peg via auxiliary, with two recursive calls on n-1."
+label: "OEXP"
+label_rationale: "Recurrence T(n) = 2T(n-1) + O(1). Unrolling: T(n) = 2^n * T(0) + sum_{k=0}^{n-1} 2^k * O(1) = O(2^n). The exact solution is 2^n - 1 moves = Theta(2^n) = OEXP."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f45_hanoi_basic"
+  - "f45_hanoi_count_only"
+  - "f45_hanoi_helper_swap"
+assumptions:
+  - "n is the number of disks."
+  - "Two recursive calls on n-1: T(n) = 2T(n-1) + O(1) -> T(n) = 2^n - 1 = O(2^n)."
+  - "OEXP class (coarse); exact value is 2^n - 1."

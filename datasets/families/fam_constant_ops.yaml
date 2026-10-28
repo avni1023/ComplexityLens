@@ -1,0 +1,12 @@
+family_idea: "Straight-line operations with constant-time primitive arithmetic, vector lookups, and bounded loops."
+label: "O1"
+label_rationale: "Straight-line execution and fixed compile-time bounded loops execute in O(1) constant time."
+tag: "easy"
+expected_parse: "valid"
+programs:
+  - "const_arithmetic"
+  - "const_vector_lookup"
+  - "const_branching"
+  - "const_bounded_loop"
+assumptions:
+  - "Standard arithmetic operations and array index operations take O(1) time."

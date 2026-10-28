@@ -1,0 +1,25 @@
+family_idea: "Pointer or index chasing loop continuing while node != target following next[node]."
+label: "UNKNOWN"
+label_rationale: "Following next pointers or transition indices x = next[x] executes a sequence of transitions determined entirely by runtime data contents rather than structural input dimensions. The number of steps cannot be bounded from container size n alone without runtime value knowledge: unknown_reason is 'data_dependent'."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f60_pointer_chase_while"
+  - "f60_pointer_chase_bounded"
+  - "f60_pointer_chase_helper"
+assumptions:
+  - "next transition array contains arbitrary runtime index values."
+  - "Static analysis cannot determine worst-case iteration bounds without knowing runtime data values."
+program_annotations:
+  f60_pointer_chase_while:
+    unknown_reason: "data_dependent"
+    explanation: "Loop termination depends on pointer-chasing through next_nodes array values, which are data-dependent."
+  f60_pointer_chase_bounded:
+    unknown_reason: "data_dependent"
+    explanation: "While loop updates index via pos = jumps[pos], making step count governed by runtime jump contents."
+  f60_pointer_chase_helper:
+    unknown_reason: "data_dependent"
+    explanation: "Transition step is resolved by helper reading link contents, resulting in a data-dependent loop bound."

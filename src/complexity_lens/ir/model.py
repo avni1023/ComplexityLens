@@ -265,10 +265,11 @@ class BranchIR:
     span: SourceSpan = dataclasses.field(
         default_factory=lambda: SourceSpan("", 0, 0, 0, 0)
     )
+    condition_items: list[Any] = dataclasses.field(default_factory=list)
 
     def all_loops(self) -> list[LoopIR]:
         res: list[LoopIR] = []
-        for item in self.then_body + self.else_body:
+        for item in self.condition_items + self.then_body + self.else_body:
             if isinstance(item, LoopIR):
                 res.extend(item.all_loops())
             elif isinstance(item, BranchIR):
@@ -277,7 +278,7 @@ class BranchIR:
 
     def all_calls(self) -> list[CallIR]:
         res: list[CallIR] = []
-        for item in self.then_body + self.else_body:
+        for item in self.condition_items + self.then_body + self.else_body:
             if isinstance(item, CallIR):
                 res.append(item)
             elif isinstance(item, (LoopIR, BranchIR)):
@@ -286,7 +287,7 @@ class BranchIR:
 
     def all_stl_ops(self) -> list[STLOperationIR]:
         res: list[STLOperationIR] = []
-        for item in self.then_body + self.else_body:
+        for item in self.condition_items + self.then_body + self.else_body:
             if isinstance(item, STLOperationIR):
                 res.append(item)
             elif isinstance(item, (LoopIR, BranchIR)):
@@ -295,7 +296,7 @@ class BranchIR:
 
     def all_unsupported(self) -> list[UnsupportedIR]:
         res: list[UnsupportedIR] = []
-        for item in self.then_body + self.else_body:
+        for item in self.condition_items + self.then_body + self.else_body:
             if isinstance(item, UnsupportedIR):
                 res.append(item)
             elif isinstance(item, (LoopIR, BranchIR)):
@@ -308,6 +309,9 @@ class BranchIR:
             "type": "BranchIR",
             "condition": self.condition,
             "span": self.span.to_dict(),
+            "condition_items": [
+                node.to_dict() for node in self.condition_items if hasattr(node, "to_dict")
+            ],
             "then_body": [node.to_dict() for node in self.then_body if hasattr(node, "to_dict")],
             "else_body": [node.to_dict() for node in self.else_body if hasattr(node, "to_dict")],
         }

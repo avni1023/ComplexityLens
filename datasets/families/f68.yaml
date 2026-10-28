@@ -1,0 +1,24 @@
+family_idea: "Iterative loop control-flow constructed using goto statements and labels."
+label: "UNKNOWN"
+label_rationale: "Control-flow loops implemented using goto labels and backward branch jumps are syntactically valid C++ but deliberately unsupported by the static complexity analyzer IR, requiring abstention: unknown_reason is 'unsupported_construct'."
+tag: "rule_hard"
+expected_parse: "has_unsupported_constructs"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f68_goto_loop_basic"
+  - "f68_goto_loop_decrement"
+  - "f68_goto_loop_helper"
+assumptions:
+  - "goto-based control-flow loops are valid C++ but flagged as unsupported constructs by the static IR parser."
+program_annotations:
+  f68_goto_loop_basic:
+    unknown_reason: "unsupported_construct"
+    explanation: "Loop is constructed with backward goto jump to loop_head label, an unsupported control-flow construct in the static analyzer."
+  f68_goto_loop_decrement:
+    unknown_reason: "unsupported_construct"
+    explanation: "Decrementing loop uses goto start_label for repetition, triggering abstention due to unsupported construct."
+  f68_goto_loop_helper:
+    unknown_reason: "unsupported_construct"
+    explanation: "goto-based loop calls an accumulation helper, retaining unsupported goto control-flow construct."

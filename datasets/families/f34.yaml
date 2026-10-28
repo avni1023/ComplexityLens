@@ -1,0 +1,15 @@
+family_idea: "In-place insertion sort with quadratic shifts in worst case."
+label: "ON2"
+label_rationale: "When the input array is sorted in reverse order, each element at index i must be compared and shifted past all i preceding elements. The total number of comparisons and shifts is sum_{i=1}^{n-1} i = n(n - 1) / 2, resulting in strictly O(n^2) worst-case time complexity."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f34_insertion_sort_for_while"
+  - "f34_insertion_sort_nested_while"
+  - "f34_insertion_sort_helper"
+assumptions:
+  - "Worst case occurs when input array is in reverse-sorted order, requiring n(n - 1)/2 element shifts."
+  - "Input size n is container length."

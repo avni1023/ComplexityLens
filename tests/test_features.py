@@ -878,6 +878,7 @@ def test_28_hand_computed_12_fixtures():
                 n_loops_const_bound=1,
                 n_sort_calls=1,
                 n_container_ops_in_loops=1,
+                n_input_dependent_ops=1,
             ),
         ),
     ]

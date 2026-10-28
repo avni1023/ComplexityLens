@@ -1,0 +1,16 @@
+family_idea: "Triple nested loop computing matrix multiplication of two n x n matrices."
+label: "ON3"
+label_rationale: "Three nested loops each iterate n times, performing n^3 scalar multiply-add operations. T(n) = n * n * n * O(1) = O(n^3)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f39_matrix_multiply_basic"
+  - "f39_matrix_multiply_while"
+  - "f39_matrix_multiply_helper"
+assumptions:
+  - "n is the single input symbol; both matrices are n x n (SINGLE_INPUT_SYMBOL)."
+  - "Each scalar multiply-add is O(1)."
+  - "n^3 total operations."

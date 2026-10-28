@@ -1,0 +1,15 @@
+family_idea: "Inserting n elements into a balanced search tree (std::set)."
+label: "ONLOGN"
+label_rationale: "Inserting an element into a red-black tree (std::set) of size k takes O(log k) comparisons. Over n successive insertions, the cumulative work is sum_{k=1}^n O(log k) = O(log(n!)) = O(n log n)."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f27_set_insert_vector"
+  - "f27_set_insert_loop_range"
+  - "f27_set_insert_helper"
+assumptions:
+  - "std::set is implemented as a balanced binary search tree with O(log k) insertion time."
+  - "Input size n is the number of elements inserted."

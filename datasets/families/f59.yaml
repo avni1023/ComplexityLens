@@ -1,0 +1,25 @@
+family_idea: "Collatz step counter: while n != 1, if n is even halve it, else multiply by 3 and add 1; count steps."
+label: "UNKNOWN"
+label_rationale: "The Collatz conjecture (termination of this process for all positive integers) remains an open mathematical problem. Static analysis cannot determine a worst-case bound because the termination of the algorithm for arbitrary input values has not been proven. The unknown_reason is 'termination': the code is deterministic but its halting is not provably decidable by static analysis alone."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f59_collatz_steps_basic"
+  - "f59_collatz_steps_while_cond"
+  - "f59_collatz_steps_helper"
+assumptions:
+  - "n is the starting integer value (must be positive; guard n >= 1)."
+  - "Termination is conjectured but unproven; static analysis cannot bound the step count."
+program_annotations:
+  f59_collatz_steps_basic:
+    unknown_reason: "termination"
+    explanation: "The loop continues while n != 1 applying the Collatz rule. Termination for all positive integers is an open conjecture; static analysis cannot determine worst-case step count."
+  f59_collatz_steps_while_cond:
+    unknown_reason: "termination"
+    explanation: "While-loop variant applying Collatz rule; the halting problem for this specific recurrence (3n+1 conjecture) is unresolved, making static bound derivation impossible."
+  f59_collatz_steps_helper:
+    unknown_reason: "termination"
+    explanation: "Helper-split Collatz: the single step is extracted to a helper, but the loop termination remains unproven; static analysis must abstain from bounding the step count."

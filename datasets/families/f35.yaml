@@ -1,0 +1,15 @@
+family_idea: "Brute-force nested inspection of all distinct index pairs (i, j)."
+label: "ON2"
+label_rationale: "Nested loops evaluate all pairs 0 <= i < j < n. The outer loop executes n times and the inner loop executes n - i - 1 times, performing n(n - 1) / 2 pair operations in strictly O(n^2) worst-case time."
+tag: "easy"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f35_pair_sum_triangular_for"
+  - "f35_pair_sum_while"
+  - "f35_pair_sum_helper"
+assumptions:
+  - "Outer loop runs n times and inner loop runs up to n times inspecting all distinct index pairs."
+  - "Input size n is container length."

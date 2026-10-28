@@ -227,7 +227,7 @@ def test_unsupported_calls_yield_unknown():
     assert res.exactness == "UNKNOWN"
     assert ReasonCode.UNSUPPORTED_CALL.value in res.reason_codes
 
-    # Disallowed STL algorithm: std::sort
+    # Supported STL algorithm: std::sort on random access container range
     code_sort = """
     #include <vector>
     #include <algorithm>
@@ -238,8 +238,24 @@ def test_unsupported_calls_yield_unknown():
     }
     """
     res_sort = analyze_source(code_sort)
-    assert res_sort.taxonomy_label == "UNKNOWN"
-    assert ReasonCode.UNSUPPORTED_CALL.value in res_sort.reason_codes
+    assert res_sort.taxonomy_label == "ONLOGN"
+    assert res_sort.exactness == "STRUCTURAL"
+    assert ReasonCode.STL_SORT.value in res_sort.reason_codes
+
+    # Truly unsupported / non-allowlisted STL algorithm: std::reverse
+    code_reverse = """
+    #include <vector>
+    #include <algorithm>
+    int main() {
+        std::vector<int> v;
+        std::reverse(v.begin(), v.end());
+        return 0;
+    }
+    """
+    res_reverse = analyze_source(code_reverse)
+    assert res_reverse.taxonomy_label == "UNKNOWN"
+    assert res_reverse.exactness == "UNKNOWN"
+    assert ReasonCode.UNSUPPORTED_CALL.value in res_reverse.reason_codes
 
 
 # ===========================================================================

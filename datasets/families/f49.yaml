@@ -1,0 +1,16 @@
+family_idea: "While loop stepping by a constant stored in a variable, e.g. step = 2; i += step."
+label: "ON"
+label_rationale: "Loop variable i advances by constant step = 2 each iteration up to n. Number of iterations is ceil(n/2) = Theta(n). The constant factor 1/2 is absorbed in asymptotic notation: T(n) = O(n)."
+tag: "rule_hard"
+expected_parse: "valid"
+origin: "hand_written"
+label_status: "author_labeled"
+verified: false
+programs:
+  - "f49_constant_step_var_basic"
+  - "f49_constant_step_var_for"
+  - "f49_constant_step_var_helper"
+assumptions:
+  - "n is the input upper bound (SINGLE_INPUT_SYMBOL)."
+  - "step is a positive constant variable (e.g. step = 2) invariant throughout the loop."
+  - "The loop executes ceil(n / step) iterations with O(1) work per iteration."

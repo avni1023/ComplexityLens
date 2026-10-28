@@ -1,0 +1,12 @@
+family_idea: "Logarithmic division of problem domain through repeated halving or binary search."
+label: "OLOGN"
+label_rationale: "Repeated halving of the search range or loop index produces a logarithmic number of steps O(log n)."
+tag: "easy"
+expected_parse: "valid"
+programs:
+  - "binsearch_while_div2"
+  - "binsearch_std_lower_bound"
+  - "binsearch_range_halving"
+  - "binsearch_multiplication_step"
+assumptions:
+  - "The input size n is the problem size or collection size, and halving takes ceil(log2(n)) steps."
