@@ -6,6 +6,8 @@ Provides user-facing commands:
 - dataset report [--json]: Evaluates dataset records, counting labels, families, UNKNOWN reasons,
   duplicate hashes, metadata failures, and parser-validity status.
 - dataset split {propose, validate, freeze, verify}: Manages dataset partitioning lifecycle.
+- evaluate cv [--manifest <path>] [--dataset-dir <dir>] [--out <path>] [--json]: Runs 3-fold
+  cross-validation on development partition across baseline models.
 """
 
 from __future__ import annotations
@@ -18,6 +20,22 @@ from typing import Any
 
 from complexity_lens.complexity.engine import analyze_file
 from complexity_lens.dataset import generate_dataset_report
+from complexity_lens.evaluation import (
+    BaselineError,
+    CrossValidationExperimentResult,
+    CrossValidationRunnerError,
+    DataIsolationError,
+    EmptyInputError,
+    EvaluationDataLoaderError,
+    FoldConfigurationError,
+    ManifestVerificationError,
+    MetadataValidationError,
+    MetricsError,
+    SerializationError,
+    TestPartitionAccessError,
+    run_cross_validation,
+    to_deterministic_json,
+)
 from complexity_lens.features.extractor import extract_features
 from complexity_lens.features.schema import FEATURE_NAMES
 from complexity_lens.ir.builder import build_ir_from_file
@@ -463,6 +481,126 @@ def run_dataset_split_verify(
     return 0
 
 
+def _print_cv_summary(
+    result: CrossValidationExperimentResult,
+    out_path: str | Path | None = None,
+) -> None:
+    """Print structured, human-readable summary of cross-validation results."""
+    print("=" * 80)
+    print("ComplexityLens Evaluation: Development Cross-Validation Summary")
+    print("=" * 80)
+    print(f"Experiment ID        : {result.experiment_id}")
+    print(f"Manifest SHA-256     : {result.manifest_sha256}")
+    print("Partition            : Development (Frozen Test Partition Strictly Isolated)")
+    summary = result.dataset_summary
+    prog_count = summary.get("program_count", 159)
+    fam_count = summary.get("family_count", 53)
+    print(f"Programs Evaluated   : {prog_count} across {fam_count} families")
+
+    folds_info = summary.get("per_fold_counts", {})
+    if folds_info:
+        fold_str = ", ".join(
+            f"F{k.split('_')[-1]}: {v.get('val_programs')}" for k, v in sorted(folds_info.items())
+        )
+        print(f"Folds                : {len(folds_info)} ({fold_str})")
+    else:
+        print("Folds                : 3")
+
+    model_names = list(result.models.keys())
+    print(f"Models Evaluated     : {len(model_names)} ({', '.join(model_names)})")
+    print()
+    print("[Development Out-of-Fold (OOF) Metrics]")
+    all_warnings: list[str] = []
+    for model_id, model_res in sorted(result.models.items()):
+        metrics = model_res.combined_oof_metrics
+        acc = metrics.accuracy
+        f1 = metrics.macro_f1
+        print(f"  {model_id}:")
+        print(f"    Accuracy         : {acc:.4f}")
+        print(f"    Macro F1         : {f1:.4f}")
+        if model_res.warnings:
+            all_warnings.extend(f"[{model_id}] {w}" for w in model_res.warnings)
+
+    print()
+    print(f"Output File          : {out_path if out_path else 'None (in-memory execution)'}")
+    if all_warnings:
+        print(f"Warnings ({len(all_warnings)})         :")
+        for w in all_warnings:
+            print(f"  - {w}")
+    else:
+        print("Warnings (0)         : None")
+    print("=" * 80)
+    print(
+        "* Note: Metrics reflect development cross-validation only, "
+        "NOT final test generalization."
+    )
+    print("=" * 80)
+
+
+def run_evaluate_cv(
+    manifest_path: str | Path = "data/splits/split_manifest_v1.0.frozen.json",
+    dataset_dir: str | Path = "datasets",
+    out_path: str | Path | None = None,
+    as_json: bool = False,
+) -> int:
+    """Execute 3-fold cross-validation on the development partition and report results."""
+    m_path = Path(manifest_path)
+    if not m_path.exists():
+        err_msg = f"Manifest file not found: {manifest_path}"
+        if as_json:
+            print(json.dumps({"status": "ERROR", "error": err_msg}, indent=2))
+        else:
+            print(f"Error: {err_msg}", file=sys.stderr)
+        return 1
+
+    if out_path is not None:
+        destination = Path(out_path)
+        if not destination.parent.exists():
+            err_msg = (
+                f"Destination parent directory does not exist: {destination.parent}. "
+                "Parent directories must be created prior to execution."
+            )
+            if as_json:
+                print(json.dumps({"status": "ERROR", "error": err_msg}, indent=2))
+            else:
+                print(f"Error: {err_msg}", file=sys.stderr)
+            return 1
+
+    try:
+        result = run_cross_validation(
+            manifest_path=m_path,
+            dataset_root=dataset_dir,
+            destination=out_path,
+            ensure_parents=False,
+        )
+    except (
+        ManifestVerificationError,
+        DataIsolationError,
+        TestPartitionAccessError,
+        FoldConfigurationError,
+        SerializationError,
+        FileNotFoundError,
+        CrossValidationRunnerError,
+        EvaluationDataLoaderError,
+        MetricsError,
+        MetadataValidationError,
+        EmptyInputError,
+        BaselineError,
+    ) as e:
+        if as_json:
+            print(json.dumps({"status": "ERROR", "error": str(e)}, indent=2))
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+    if as_json:
+        print(to_deterministic_json(result.to_dict()).rstrip("\n"))
+        return 0
+
+    _print_cv_summary(result, out_path=out_path)
+    return 0
+
+
 def main(args: list[str] | None = None) -> int:
     """CLI entry point dispatching to appropriate command."""
     parser = argparse.ArgumentParser(
@@ -523,6 +661,39 @@ def main(args: list[str] | None = None) -> int:
     verify_parser.add_argument("--dataset-dir", default="datasets", help="Path to dataset root")
     verify_parser.add_argument("--json", action="store_true", help="Output JSON")
 
+    # evaluate command
+    evaluate_parser = subparsers.add_parser(
+        "evaluate", help="Evaluation and benchmarking operations"
+    )
+    evaluate_subparsers = evaluate_parser.add_subparsers(
+        dest="evaluate_command", help="Evaluation subcommands"
+    )
+
+    # evaluate cv
+    cv_parser = evaluate_subparsers.add_parser(
+        "cv", help="Run 3-fold cross-validation on development partition"
+    )
+    cv_parser.add_argument(
+        "--manifest",
+        default="data/splits/split_manifest_v1.0.frozen.json",
+        help="Path to frozen split manifest JSON",
+    )
+    cv_parser.add_argument(
+        "--dataset-dir",
+        default="datasets",
+        help="Path to dataset root directory",
+    )
+    cv_parser.add_argument(
+        "--out",
+        default=None,
+        help="Explicit destination file path for deterministic JSON results",
+    )
+    cv_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON to stdout",
+    )
+
     parsed_args = parser.parse_args(args)
 
     if parsed_args.command == "analyze":
@@ -570,6 +741,17 @@ def main(args: list[str] | None = None) -> int:
                 return 1
         else:
             dataset_parser.print_help()
+            return 1
+    elif parsed_args.command == "evaluate":
+        if parsed_args.evaluate_command == "cv":
+            return run_evaluate_cv(
+                manifest_path=parsed_args.manifest,
+                dataset_dir=parsed_args.dataset_dir,
+                out_path=parsed_args.out,
+                as_json=parsed_args.json,
+            )
+        else:
+            evaluate_parser.print_help()
             return 1
     else:
         parser.print_help()
