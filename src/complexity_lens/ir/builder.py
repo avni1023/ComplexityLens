@@ -1168,17 +1168,32 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                 ckind = detect_container_kind(n.type_spelling or " ".join(toks))
                 if ckind:
                     container_types[var_name] = ckind
+                is_const_decl = any(k in toks for k in ("const", "constexpr"))
                 if "=" in toks:
                     eq_idx = toks.index("=")
                     val_str = toks[eq_idx + 1] if eq_idx + 1 < len(toks) else ""
                     if val_str.isdigit():
                         val = int(val_str)
-                        local_constants[var_name] = val
+                        if var_name in ("n", "N", "m", "M"):
+                            local_named_constants.add(var_name)
+                        else:
+                            local_constants[var_name] = val
                         initial_values[var_name] = val
                         assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
                     elif val_str == "-" and eq_idx + 2 < len(toks) and toks[eq_idx + 2].isdigit():
                         val = -int(toks[eq_idx + 2])
-                        local_constants[var_name] = val
+                        if var_name in ("n", "N", "m", "M"):
+                            local_named_constants.add(var_name)
+                        else:
+                            local_constants[var_name] = val
+                        initial_values[var_name] = val
+                        assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
+                    elif val_str in local_constants:
+                        val = local_constants[val_str]
+                        if var_name in ("n", "N", "m", "M"):
+                            local_named_constants.add(var_name)
+                        else:
+                            local_constants[var_name] = val
                         initial_values[var_name] = val
                         assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
                     else:
@@ -1187,11 +1202,14 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
                             tok in param_names
                             or tok in cin_vars
                             or tok in top_level_named_constants
+                            or tok in local_named_constants
                             for tok in rhs_toks
                         ):
                             local_named_constants.add(var_name)
+                        elif is_const_decl:
+                            local_named_constants.add(var_name)
                         assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
-                elif any(k in toks for k in ("const", "constexpr")):
+                elif is_const_decl:
                     local_named_constants.add(var_name)
                     assigned_counts[var_name] = assigned_counts.get(var_name, 0) + 1
                 else:
@@ -1225,7 +1243,8 @@ def build_ir(parse_result: ParseResult) -> ProgramIR:
             if cnt > 1:
                 multiply_assigned.add(var)
                 local_constants.pop(var, None)
-                local_named_constants.discard(var)
+                if var not in ("n", "N", "m", "M"):
+                    local_named_constants.discard(var)
 
         ctx = _IRBuilderContext(
             enclosing_func_name=f_name,

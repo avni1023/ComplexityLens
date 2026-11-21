@@ -48,3 +48,6 @@ htmlcov/
 tmp/
 temp/
 scratch/
+
+# Experiment & Evaluation Outputs
+artifacts/
