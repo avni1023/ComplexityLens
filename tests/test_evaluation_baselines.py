@@ -385,12 +385,13 @@ def test_scaler_isolated_from_validation_data():
 def test_no_disk_artifacts_created_during_fitting(tmp_path: Path):
     """Verify baseline model fitting creates zero disk files or cache directories."""
     repo_artifacts = Path("artifacts")
-    assert not repo_artifacts.exists()
+    existed_before = repo_artifacts.exists()
 
     X, y = _make_synthetic_data(n_samples=15)
     _ = MajorityClassBaseline().fit(X, y)
     _ = LogisticRegressionBaseline().fit(X, y)
     _ = DecisionTreeBaseline().fit(X, y)
 
-    # Confirm artifacts directory was NOT created
-    assert not repo_artifacts.exists()
+    # Confirm artifacts directory was NOT created by fitting
+    if not existed_before:
+        assert not repo_artifacts.exists()

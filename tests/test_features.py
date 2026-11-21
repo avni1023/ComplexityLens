@@ -34,6 +34,7 @@ Validates:
 
 from __future__ import annotations
 
+import subprocess
 import sys
 
 import pytest
@@ -664,9 +665,26 @@ def test_26_extractor_does_not_import_engine_analysis_entry_point():
 
 def test_27_extractor_does_not_import_ml_packages():
     """The feature-extraction module dependency graph must not import any ML packages."""
-    ml_packages = ("sklearn", "scipy", "numpy", "pandas", "torch", "xgboost", "lightgbm")
-    for pkg in ml_packages:
-        assert pkg not in sys.modules, f"ML package {pkg} was imported!"
+    cmd = [
+        sys.executable,
+        "-c",
+        (
+            "import sys\n"
+            "import complexity_lens.features.extractor\n"
+            "ml_packages = (\n"
+            "    'sklearn', 'scipy', 'numpy', 'pandas', 'torch', 'xgboost', 'lightgbm'\n"
+            ")\n"
+            "imported = [pkg for pkg in ml_packages if pkg in sys.modules]\n"
+            "if imported:\n"
+            "    raise AssertionError(f'ML package(s) {imported} were imported!')\n"
+        ),
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0, f"Import isolation check failed:\n{res.stderr}"
+
+
+
+
 
 
 # ===========================================================================

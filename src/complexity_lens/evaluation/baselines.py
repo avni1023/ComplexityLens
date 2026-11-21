@@ -27,14 +27,24 @@ from __future__ import annotations
 import warnings
 from collections import Counter
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier
+
+try:
+    import xgboost as xgb
+
+    XGBOOST_AVAILABLE: bool = True
+except ImportError:
+    xgb = None  # type: ignore[assignment]
+    XGBOOST_AVAILABLE = False
 
 from complexity_lens.evaluation.data_loader import (
     CANONICAL_CLASS_ORDER,
@@ -61,6 +71,24 @@ DECISION_TREE_CONFIG: dict[str, Any] = {
     "criterion": "gini",
     "max_depth": 5,
     "random_state": DEFAULT_RANDOM_STATE,
+}
+
+RANDOM_FOREST_DEFAULT_CONFIG: dict[str, Any] = {
+    "n_estimators": 200,
+    "max_depth": None,
+    "min_samples_leaf": 1,
+    "random_state": DEFAULT_RANDOM_STATE,
+    "n_jobs": 1,
+}
+
+XGBOOST_DEFAULT_CONFIG: dict[str, Any] = {
+    "n_estimators": 100,
+    "max_depth": 2,
+    "learning_rate": 0.1,
+    "random_state": DEFAULT_RANDOM_STATE,
+    "n_jobs": 1,
+    "tree_method": "hist",
+    "eval_metric": "mlogloss",
 }
 
 
@@ -466,17 +494,349 @@ class DecisionTreeBaseline:
 
 
 # ---------------------------------------------------------------------------
+# Candidate D: Random Forest Classifier
+# ---------------------------------------------------------------------------
+
+
+class RandomForestBaseline:
+    """Random Forest classifier adhering to canonical 8-class evaluation schema.
+
+    Parameters
+    ----------
+    n_estimators:
+        Number of trees in the forest (default: 200).
+    max_depth:
+        Maximum depth of trees (default: None; or integer like 6).
+    min_samples_leaf:
+        Minimum number of samples required at a leaf node (default: 1; or 2).
+    random_state:
+        Seed for reproducibility (default: 42).
+    n_jobs:
+        Worker threads (default: 1 for determinism).
+    """
+
+    model_id: str = "random_forest"
+
+    def __init__(
+        self,
+        *,
+        n_estimators: int = 200,
+        max_depth: int | None = None,
+        min_samples_leaf: int = 1,
+        random_state: int = DEFAULT_RANDOM_STATE,
+        n_jobs: int = 1,
+    ) -> None:
+        self.n_estimators = int(n_estimators)
+        self.max_depth = int(max_depth) if max_depth is not None else None
+        self.min_samples_leaf = int(min_samples_leaf)
+        self.random_state = int(random_state)
+        self.n_jobs = int(n_jobs)
+        self.fixed_hyperparameters: dict[str, Any] = {
+            "n_estimators": self.n_estimators,
+            "max_depth": self.max_depth,
+            "min_samples_leaf": self.min_samples_leaf,
+            "random_state": self.random_state,
+            "n_jobs": self.n_jobs,
+        }
+        self._classes_: list[str] = []
+        self._classifier: RandomForestClassifier | None = None
+
+    @property
+    def is_fitted(self) -> bool:
+        """True if the random forest has been fitted."""
+        return self._classifier is not None and len(self._classes_) > 0
+
+    @property
+    def feature_importances_(self) -> np.ndarray:
+        """Normalized feature importances across the 26 canonical features."""
+        if not self.is_fitted or self._classifier is None:
+            raise NotFittedError("RandomForestBaseline is not fitted. Call fit() first.")
+        return np.asarray(self._classifier.feature_importances_, dtype=np.float64)
+
+    def fit(self, X: Any, y: Sequence[str]) -> RandomForestBaseline:
+        """Fit the random forest on training feature matrix and labels."""
+        X_arr = validate_features(X, allow_empty=False)
+        y_validated = validate_labels(y, allow_empty=False)
+
+        if len(X_arr) != len(y_validated):
+            raise InvalidInputError(
+                f"Mismatched sample counts: len(X)={len(X_arr)} != len(y)={len(y_validated)}."
+            )
+
+        clf = RandomForestClassifier(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            min_samples_leaf=self.min_samples_leaf,
+            random_state=self.random_state,
+            n_jobs=self.n_jobs,
+        )
+        clf.fit(X_arr, y_validated)
+        self._classifier = clf
+        self._classes_ = [str(c) for c in clf.classes_]
+        return self
+
+    def predict(self, X: Any) -> list[str]:
+        """Predict canonical class labels for feature matrix X."""
+        if not self.is_fitted or self._classifier is None:
+            raise NotFittedError("RandomForestBaseline is not fitted. Call fit() first.")
+        X_arr = validate_features(X, allow_empty=False)
+        preds = self._classifier.predict(X_arr)
+        return [str(p) for p in preds]
+
+    def predict_proba(self, X: Any) -> np.ndarray:
+        """Predict probabilities mapped to the complete 8-class canonical order."""
+        if not self.is_fitted or self._classifier is None:
+            raise NotFittedError("RandomForestBaseline is not fitted. Call fit() first.")
+        X_arr = validate_features(X, allow_empty=False)
+        raw_proba = self._classifier.predict_proba(X_arr)
+        return map_probabilities_to_canonical_order(
+            model_classes=self._classes_,
+            raw_probabilities=raw_proba,
+            canonical_classes=CANONICAL_CLASS_ORDER,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Candidate E: XGBoost Classifier
+# ---------------------------------------------------------------------------
+
+
+class XGBoostBaseline:
+    """XGBoost classifier with contiguous label encoding and canonical probability mapping.
+
+    Requirements:
+    - Encodes training fold classes into contiguous integer codes [0 .. K-1].
+    - Trains using only encoded labels present in the fold.
+    - Sets n_jobs=1, fixed random seed, eval_metric='mlogloss', tree_method='hist'.
+    - Predicts probabilities for the K trained classes.
+    - Maps predicted probabilities into canonical 8-class order with 0.0 for absent classes.
+    - Supports native JSON serialization and deserialization.
+    """
+
+    model_id: str = "xgboost"
+
+    def __init__(
+        self,
+        *,
+        n_estimators: int = 100,
+        max_depth: int = 2,
+        learning_rate: float = 0.1,
+        random_state: int = DEFAULT_RANDOM_STATE,
+        n_jobs: int = 1,
+    ) -> None:
+        if not XGBOOST_AVAILABLE:
+            raise BaselineError(
+                "xgboost package is not installed or importable. "
+                "Install with prebuilt wheels: pip install 'xgboost>=2.0.0'"
+            )
+        self.n_estimators = int(n_estimators)
+        self.max_depth = int(max_depth)
+        self.learning_rate = float(learning_rate)
+        self.random_state = int(random_state)
+        self.n_jobs = int(n_jobs)
+        self.fixed_hyperparameters: dict[str, Any] = {
+            "n_estimators": self.n_estimators,
+            "max_depth": self.max_depth,
+            "learning_rate": self.learning_rate,
+            "random_state": self.random_state,
+            "n_jobs": self.n_jobs,
+            "tree_method": "hist",
+            "eval_metric": "mlogloss",
+        }
+        self._classes_: list[str] = []
+        self._class_to_code: dict[str, int] = {}
+        self._classifier: Any = None
+
+    @property
+    def is_fitted(self) -> bool:
+        """True if the model has been fitted."""
+        return self._classifier is not None and len(self._classes_) > 0
+
+    @property
+    def feature_importances_(self) -> np.ndarray:
+        """Feature importances across the 26 canonical features."""
+        if not self.is_fitted:
+            raise NotFittedError("XGBoostBaseline is not fitted. Call fit() first.")
+        if self._classifier == "single_class":
+            return np.zeros(NUM_CANONICAL_FEATURES, dtype=np.float64)
+        return np.asarray(self._classifier.feature_importances_, dtype=np.float64)
+
+    def fit(self, X: Any, y: Sequence[str]) -> XGBoostBaseline:
+        """Fit the XGBoost classifier on training features and labels."""
+        X_arr = validate_features(X, allow_empty=False)
+        y_validated = validate_labels(y, allow_empty=False)
+
+        if len(X_arr) != len(y_validated):
+            raise InvalidInputError(
+                f"Mismatched sample counts: len(X)={len(X_arr)} != len(y)={len(y_validated)}."
+            )
+
+        # Identify classes present in this fold's training labels, ordered canonically
+        present_classes = sorted(
+            list(set(y_validated)),
+            key=lambda c: CANONICAL_CLASS_TO_INDEX.get(c, 999),
+        )
+        self._classes_ = present_classes
+        self._class_to_code = {cls_name: idx for idx, cls_name in enumerate(present_classes)}
+
+        if len(present_classes) == 1:
+            self._classifier = "single_class"
+            return self
+
+        y_encoded = np.array([self._class_to_code[c] for c in y_validated], dtype=np.int32)
+        eval_metric = "mlogloss" if len(present_classes) > 2 else "logloss"
+
+        clf = xgb.XGBClassifier(
+            n_estimators=self.n_estimators,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            random_state=self.random_state,
+            n_jobs=self.n_jobs,
+            tree_method="hist",
+            eval_metric=eval_metric,
+        )
+        clf.fit(X_arr, y_encoded)
+        self._classifier = clf
+        return self
+
+    def predict_proba(self, X: Any) -> np.ndarray:
+        """Predict probabilities mapped to the complete 8-class canonical order."""
+        if not self.is_fitted:
+            raise NotFittedError("XGBoostBaseline is not fitted. Call fit() first.")
+        X_arr = validate_features(X, allow_empty=False)
+        n_samples = len(X_arr)
+
+        if self._classifier == "single_class":
+            raw_proba = np.ones((n_samples, 1), dtype=np.float64)
+        else:
+            raw_proba = self._classifier.predict_proba(X_arr)
+
+        return map_probabilities_to_canonical_order(
+            model_classes=self._classes_,
+            raw_probabilities=raw_proba,
+            canonical_classes=CANONICAL_CLASS_ORDER,
+        )
+
+    def predict(self, X: Any) -> list[str]:
+        """Predict canonical class labels for feature matrix X."""
+        if not self.is_fitted:
+            raise NotFittedError("XGBoostBaseline is not fitted. Call fit() first.")
+        probs = self.predict_proba(X)
+        pred_indices = np.argmax(probs, axis=1)
+        return [CANONICAL_CLASS_ORDER[idx] for idx in pred_indices]
+
+    def save_model(self, file_path: str | Path) -> None:
+        """Save fitted XGBoost model in native JSON format."""
+        if not self.is_fitted:
+            raise NotFittedError("Cannot save unfitted XGBoost model.")
+        if self._classifier == "single_class":
+            raise BaselineError("Cannot persist degenerate single-class model via native XGBoost.")
+        self._classifier.save_model(str(file_path))
+
+    def load_model(self, file_path: str | Path, classes: Sequence[str]) -> None:
+        """Load fitted XGBoost model from native JSON format."""
+        if not XGBOOST_AVAILABLE:
+            raise BaselineError("xgboost package is not installed or importable.")
+        clf = xgb.XGBClassifier()
+        clf.load_model(str(file_path))
+        self._classifier = clf
+        self._classes_ = list(classes)
+        self._class_to_code = {c: i for i, c in enumerate(self._classes_)}
+
+
+# ---------------------------------------------------------------------------
+# Designated Fallback: HistGradientBoosting Classifier
+# ---------------------------------------------------------------------------
+
+
+class HistGradientBoostingBaseline:
+    """Designated fallback classifier using scikit-learn HistGradientBoostingClassifier."""
+
+    model_id: str = "hist_gradient_boosting"
+
+    def __init__(
+        self,
+        *,
+        max_iter: int = 100,
+        max_depth: int = 2,
+        learning_rate: float = 0.1,
+        random_state: int = DEFAULT_RANDOM_STATE,
+    ) -> None:
+        self.max_iter = int(max_iter)
+        self.max_depth = int(max_depth)
+        self.learning_rate = float(learning_rate)
+        self.random_state = int(random_state)
+        self.fixed_hyperparameters: dict[str, Any] = {
+            "max_iter": self.max_iter,
+            "max_depth": self.max_depth,
+            "learning_rate": self.learning_rate,
+            "random_state": self.random_state,
+        }
+        self._classes_: list[str] = []
+        self._classifier: HistGradientBoostingClassifier | None = None
+
+    @property
+    def is_fitted(self) -> bool:
+        """True if the classifier has been fitted."""
+        return self._classifier is not None and len(self._classes_) > 0
+
+    def fit(self, X: Any, y: Sequence[str]) -> HistGradientBoostingBaseline:
+        """Fit the gradient boosting classifier on training data."""
+        X_arr = validate_features(X, allow_empty=False)
+        y_validated = validate_labels(y, allow_empty=False)
+
+        if len(X_arr) != len(y_validated):
+            raise InvalidInputError(
+                f"Mismatched sample counts: len(X)={len(X_arr)} != len(y)={len(y_validated)}."
+            )
+
+        clf = HistGradientBoostingClassifier(
+            max_iter=self.max_iter,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            random_state=self.random_state,
+        )
+        clf.fit(X_arr, y_validated)
+        self._classifier = clf
+        self._classes_ = [str(c) for c in clf.classes_]
+        return self
+
+    def predict(self, X: Any) -> list[str]:
+        """Predict canonical class labels for feature matrix X."""
+        if not self.is_fitted or self._classifier is None:
+            raise NotFittedError("HistGradientBoostingBaseline is not fitted. Call fit() first.")
+        X_arr = validate_features(X, allow_empty=False)
+        preds = self._classifier.predict(X_arr)
+        return [str(p) for p in preds]
+
+    def predict_proba(self, X: Any) -> np.ndarray:
+        """Predict probabilities mapped to the complete 8-class canonical order."""
+        if not self.is_fitted or self._classifier is None:
+            raise NotFittedError("HistGradientBoostingBaseline is not fitted. Call fit() first.")
+        X_arr = validate_features(X, allow_empty=False)
+        raw_proba = self._classifier.predict_proba(X_arr)
+        return map_probabilities_to_canonical_order(
+            model_classes=self._classes_,
+            raw_probabilities=raw_proba,
+            canonical_classes=CANONICAL_CLASS_ORDER,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Model Registry / Factory
 # ---------------------------------------------------------------------------
 
 
 def create_baseline_model(model_id: str, **kwargs: Any) -> Any:
-    """Instantiate a baseline classifier by its canonical identifier.
+    """Instantiate a model classifier by its canonical identifier.
 
     Supported model_ids:
     - 'majority_class'
     - 'logistic_regression'
     - 'decision_tree'
+    - 'random_forest'
+    - 'xgboost'
+    - 'hist_gradient_boosting'
     """
     normalized_id = str(model_id).strip().lower()
     if normalized_id == "majority_class":
@@ -485,8 +845,15 @@ def create_baseline_model(model_id: str, **kwargs: Any) -> Any:
         return LogisticRegressionBaseline(**kwargs)
     if normalized_id == "decision_tree":
         return DecisionTreeBaseline(**kwargs)
+    if normalized_id == "random_forest":
+        return RandomForestBaseline(**kwargs)
+    if normalized_id == "xgboost":
+        return XGBoostBaseline(**kwargs)
+    if normalized_id == "hist_gradient_boosting":
+        return HistGradientBoostingBaseline(**kwargs)
 
     raise ValueError(
         f"Unknown baseline model_id: {model_id!r}. Supported models: "
-        f"['majority_class', 'logistic_regression', 'decision_tree']."
+        f"['majority_class', 'logistic_regression', 'decision_tree', "
+        f"'random_forest', 'xgboost', 'hist_gradient_boosting']."
     )

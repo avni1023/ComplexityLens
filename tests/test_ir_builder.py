@@ -454,3 +454,123 @@ class TestIRSerialization:
         assert "Loop FOR (depth=1)" in output
         assert "Loop FOR (depth=2)" in output
         assert "LINEAR_INPUT" in output
+
+
+# ---------------------------------------------------------------------------
+# Constant Resolution and Loop Classification Regressions
+# ---------------------------------------------------------------------------
+
+
+class TestConstantResolutionRegressions:
+    """Verifies Fix 3: Local constant resolution, input-symbol preservation, and bounds."""
+
+    def test_const_int_length_used_in_std_find(self):
+        """1. const int length = 5 used as range of std::find yields O(1)."""
+        from complexity_lens.complexity.engine import analyze_source
+
+        src = """
+        #include <algorithm>
+        int test_find(int* arr, int n) {
+            const int length = 5;
+            return std::find(arr, arr + length, 42) != (arr + length);
+        }
+        """
+        res = analyze_source(src, function_name="test_find")
+        assert res.taxonomy_label == "O1"
+
+    def test_const_int_length_used_in_std_sort(self):
+        """2. const int length = 5 used as range of std::sort yields O(1)."""
+        from complexity_lens.complexity.engine import analyze_source
+
+        src = """
+        #include <algorithm>
+        void test_sort(int* arr, int n) {
+            const int length = 5;
+            std::sort(arr, arr + length);
+        }
+        """
+        res = analyze_source(src, function_name="test_sort")
+        assert res.taxonomy_label == "O1"
+
+    def test_input_symbol_n_used_in_stl_range(self):
+        """3. An input-size symbol n used in an STL range yields input-scaled complexity."""
+        from complexity_lens.complexity.engine import analyze_source
+
+        src_sort = """
+        #include <algorithm>
+        void test_sort_n(int* arr, int n) {
+            std::sort(arr, arr + n);
+        }
+        """
+        res_sort = analyze_source(src_sort, function_name="test_sort_n")
+        assert res_sort.taxonomy_label == "ONLOGN"
+
+        src_find = """
+        #include <algorithm>
+        int test_find_n(int* arr, int n) {
+            return std::find(arr, arr + n, 42) != (arr + n);
+        }
+        """
+        res_find = analyze_source(src_find, function_name="test_find_n")
+        assert res_find.taxonomy_label == "ON"
+
+    def test_literal_bound_loop_i_less_than_100(self):
+        """4. A literal-bound loop such as i < 100 yields CONSTANT bound and O(1)."""
+        from complexity_lens.complexity.engine import analyze_source
+
+        src = """
+        int test_lit_loop() {
+            int sum = 0;
+            for (int i = 0; i < 100; ++i) {
+                sum += i;
+            }
+            return sum;
+        }
+        """
+        prog = build_ir_from_source(src)
+        fn = prog.functions[0]
+        loop = fn.all_loops()[0]
+        assert loop.bound.kind == BoundKind.CONSTANT
+        res = analyze_source(src, function_name="test_lit_loop")
+        assert res.taxonomy_label == "O1"
+
+    def test_linear_loop_bounded_by_n(self):
+        """5. A linear loop bounded by n yields LINEAR_INPUT bound and O(n)."""
+        from complexity_lens.complexity.engine import analyze_source
+
+        src = """
+        int test_linear_loop(int n) {
+            int sum = 0;
+            for (int i = 0; i < n; ++i) {
+                sum += i;
+            }
+            return sum;
+        }
+        """
+        prog = build_ir_from_source(src)
+        fn = prog.functions[0]
+        loop = fn.all_loops()[0]
+        assert loop.bound.kind == BoundKind.LINEAR_INPUT
+        res = analyze_source(src, function_name="test_linear_loop")
+        assert res.taxonomy_label == "ON"
+
+    def test_logarithmic_loop_repeatedly_halving_n(self):
+        """6. A logarithmic loop halving n yields MULTIPLICATIVE update and O(log n)."""
+        from complexity_lens.complexity.engine import analyze_source
+
+        src = """
+        int test_log_loop(int n) {
+            int count = 0;
+            while (n > 0) {
+                count++;
+                n /= 2;
+            }
+            return count;
+        }
+        """
+        prog = build_ir_from_source(src)
+        fn = prog.functions[0]
+        loop = fn.all_loops()[0]
+        assert loop.update.kind == UpdateKind.MULTIPLICATIVE
+        res = analyze_source(src, function_name="test_log_loop")
+        assert res.taxonomy_label == "OLOGN"

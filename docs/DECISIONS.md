@@ -344,3 +344,73 @@ because the range expression is not a traditional bound.
 - Container-type provenance prevents future code from treating best-effort
   inferences as resolved semantic facts.
 
+
+
+---
+
+## ADR-013: Deterministic Hybrid Fusion Gate, Reason-Aware Fallback & Verification (Day 13)
+
+* **Date**: 2026-11-20
+* **Status**: Accepted
+
+### Context
+
+ComplexityLens combines deterministic static analysis with probabilistic machine learning predictions. Previous milestones used either static-only evaluation (Day 12), candidate ML classifiers (Day 11), or provisional un-gated fallback. 
+
+Day 13 introduces an authoritative, deterministic hybrid decision gate with four strictly defined evaluation modes (S1–S4), reason-aware fallback qualification, strict probability vector validation, and formal verification status reporting.
+
+### Core Architectural Decisions
+
+1. **Evaluation Modes (S1–S4)**:
+   - **S1 (Static-Only)**: Analytical baseline. Uses static analysis outputs exclusively. Returns `UNKNOWN` for all inconclusive cases. Never consults or outputs ML predictions.
+   - **S2 (ML-Only)**: Probabilistic baseline. Uses ML classifier predictions exclusively. Returns `UNKNOWN` if ML predicts `UNKNOWN`, probability vector is invalid, or ML is unavailable.
+   - **S3 (Naive Hybrid)**: Static-first baseline without verification gating. If static analysis is determined, static result is emitted; otherwise, any valid ML prediction provides fallback unconditionally.
+   - **S4 (Hybrid with Verification and Abstention)**: Production hybrid system. Supported static results are preserved unconditionally. When static analysis is inconclusive, ML fallback is accepted **if and only if**:
+     (a) The static `UNKNOWN` reason is classified as an **eligible tooling limitation** (`unsupported_construct`, `incomplete_analysis`, `incomplete_ir`, `partial_ir`), AND
+     (b) The ML probability vector is mathematically valid, AND
+     (c) The ML score ($\max_c P(c)$) meets or exceeds the decision threshold $\tau$ (default: $0.55$).
+     If the static `UNKNOWN` reason is **ineligible** (`termination`, `external_call`, `data_dependent`, `irregular_recursion`), ML fallback is strictly forbidden and the system abstains (`UNKNOWN`).
+
+2. **Preservation of UPPER_BOUND and Structural Results**:
+   - A determined static result (`STRUCTURAL` or `UPPER_BOUND`) is never overridden by ML, even if ML predicts a lower or higher complexity with high confidence.
+   - Static analytical certainty and ML confidence are never blended or averaged into a single metric.
+
+3. **Strict Probability Vector Validation**:
+   - Input vectors are validated at the gate boundary:
+     - All probabilities must be finite numeric values (no `NaN`, `inf`, booleans, or non-numeric types).
+     - Individual probabilities must lie in $[0.0, 1.0]$.
+     - The sum of probabilities across all canonical classes (`O1`, `OLOGN`, `ON`, `ONLOGN`, `ON2`, `ON3`, `OEXP`, `UNKNOWN`) must equal $1.0 \pm 10^{-4}$.
+   - ML score is explicitly labeled: `"ML score (max class probability, uncalibrated)"`.
+
+4. **Structured Verification Status**:
+   - `STATIC_VERIFIED`: Result verified by deterministic static AST/CFG/STL analysis.
+   - `ML_FALLBACK_UNVERIFIED`: Result produced by ML fallback when static analysis was inconclusive.
+   - `ML_UNVERIFIED`: Standalone ML prediction (S2 mode).
+   - `ABSTAINED`: System abstained from making a non-UNKNOWN prediction due to static inconclusiveness, ineligible reason, low confidence, or missing/invalid ML.
+
+### Authoritative Decision Table
+
+The deterministic behavior across all input conditions is defined below:
+
+| Condition # | Static Status | Static Exactness | UNKNOWN Reason | ML Validity | ML Score vs $\tau$ | Static / ML Agreement | S1 (Static-Only) | S2 (ML-Only) | S3 (Naive Hybrid) | S4 (Hybrid + Verification) | S4 Verification Status |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 1 | Determined | STRUCTURAL | N/A | Valid | Score $\ge \tau$ | Agree | Static | ML | Static | Static | `STATIC_VERIFIED` |
+| 2 | Determined | STRUCTURAL | N/A | Valid | Score $\ge \tau$ | Disagree | Static | ML | Static | Static | `STATIC_VERIFIED` |
+| 3 | Determined | STRUCTURAL | N/A | Valid | Score $< \tau$ | Disagree | Static | ML | Static | Static | `STATIC_VERIFIED` |
+| 4 | Determined | STRUCTURAL | N/A | Invalid / None | N/A | N/A | Static | UNKNOWN | Static | Static | `STATIC_VERIFIED` |
+| 5 | Determined | UPPER_BOUND | N/A | Valid | Score $\ge \tau$ | Agree | Static | ML | Static | Static | `STATIC_VERIFIED` |
+| 6 | Determined | UPPER_BOUND | N/A | Valid | Score $\ge \tau$ | Disagree | Static | ML | Static | Static (preserves upper bound) | `STATIC_VERIFIED` |
+| 7 | Determined | UPPER_BOUND | N/A | Valid | Score $< \tau$ | Disagree | Static | ML | Static | Static (preserves upper bound) | `STATIC_VERIFIED` |
+| 8 | UNKNOWN | N/A | Eligible | Valid | Score $\ge \tau$ | N/A | UNKNOWN | ML | ML | ML (fallback accepted) | `ML_FALLBACK_UNVERIFIED` |
+| 9 | UNKNOWN | N/A | Eligible | Valid | Score $< \tau$ | N/A | UNKNOWN | ML | ML | UNKNOWN (below threshold) | `ABSTAINED` |
+| 10 | UNKNOWN | N/A | Eligible | Valid ($\text{pred}=\text{UNKNOWN}$) | Score $\ge \tau$ | N/A | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN (ML predicted UNKNOWN) | `ABSTAINED` |
+| 11 | UNKNOWN | N/A | Ineligible | Valid | Score $\ge \tau$ | N/A | UNKNOWN | ML | ML | UNKNOWN (ineligible reason) | `ABSTAINED` |
+| 12 | UNKNOWN | N/A | Ineligible | Valid | Score $< \tau$ | N/A | UNKNOWN | ML | ML | UNKNOWN (ineligible reason) | `ABSTAINED` |
+| 13 | UNKNOWN | N/A | Any / None | Invalid (sum $\ne 1.0$) | N/A | N/A | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN (invalid vector) | `ABSTAINED` |
+| 14 | UNKNOWN | N/A | Any / None | None (ML not run) | N/A | N/A | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN (no ML) | `ABSTAINED` |
+
+### Consequences
+
+- Guarantees mathematical safety: deterministic structural derivations and supported static upper-bound results are never corrupted by ML approximations.
+- Ineligible semantic unknowns (e.g. non-terminating Collatz conjectures, dependent loop conditions) cannot be bypassed by ML heuristics.
+- Provides a clean foundation for empirical S1–S4 comparison on the 159 development programs.

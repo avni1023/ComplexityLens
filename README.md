@@ -2,7 +2,7 @@
 
 *An Explainable Hybrid Static Analysis and Machine Learning System for C++ Complexity Analysis*
 
-ComplexityLens analyzes small C++ programs ($\le 200$ lines, single translation unit) and determines their worst-case time complexity using a hybrid pipeline combining deterministic static rules and calibrated machine learning with verification and abstention.
+ComplexityLens analyzes small C++ programs ($\le 200$ lines, single translation unit) and determines their worst-case time complexity using a hybrid pipeline combining deterministic static rules and statistical machine learning with verification and abstention.
 
 ## Supported Taxonomy
 - Determinable classes: `O(1)`, `O(log n)`, `O(n)`, `O(n log n)`, `O(n²)`, `O(n³)`, `O(2ⁿ)`
@@ -39,6 +39,11 @@ python -m venv .venv
 .\.venv\Scripts\pip.exe install -r requirements-dev.txt
 ```
 
+### Launching the Web Dashboard
+```powershell
+.\.venv\Scripts\streamlit.exe run app.py
+```
+
 ### Running Tests & Linting
 
 **On Windows (PowerShell):**
@@ -52,6 +57,8 @@ make check
 ```
 
 ## Scope & Limitations
-- **Time Complexity Only**: Space complexity is explicitly out of scope for the MVRS.
+- **Time Complexity Only**: Auxiliary-space complexity analysis is explicitly out of scope and not implemented in the current prototype.
+- **Uncalibrated ML Estimates**: Model class probabilities represent tree-based ensemble distributions and are uncalibrated.
+- **Development Partition Evaluation**: Reported model metrics represent 3-fold grouped cross-validation on the development partition; the frozen test holdout remains untouched.
 - **Input Scope**: Single `.cpp` source files, $\le 200$ LOC, single translation unit without external build systems.
 - **Safety**: Analyzed code is parsed strictly as data and is never compiled or executed.

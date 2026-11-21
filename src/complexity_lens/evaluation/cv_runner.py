@@ -33,6 +33,8 @@ from typing import Any
 from complexity_lens.evaluation.baselines import (
     DECISION_TREE_CONFIG,
     LOGISTIC_REGRESSION_CONFIG,
+    RANDOM_FOREST_DEFAULT_CONFIG,
+    XGBOOST_DEFAULT_CONFIG,
     create_baseline_model,
 )
 from complexity_lens.evaluation.data_loader import (
@@ -274,12 +276,19 @@ def get_library_versions() -> dict[str, str]:
 
 def get_model_fixed_hyperparameters(model_id: str) -> dict[str, Any]:
     """Return canonical fixed hyperparameter dictionary for a baseline model."""
-    if model_id == "majority_class":
+    normalized_id = str(model_id).strip().lower()
+    if normalized_id == "majority_class":
         return {"strategy": "majority_class", "tie_breaker": "canonical_order"}
-    if model_id == "logistic_regression":
+    if normalized_id == "logistic_regression":
         return dict(LOGISTIC_REGRESSION_CONFIG)
-    if model_id == "decision_tree":
+    if normalized_id == "decision_tree":
         return dict(DECISION_TREE_CONFIG)
+    if normalized_id == "random_forest":
+        return dict(RANDOM_FOREST_DEFAULT_CONFIG)
+    if normalized_id == "xgboost":
+        return dict(XGBOOST_DEFAULT_CONFIG)
+    if normalized_id == "hist_gradient_boosting":
+        return {"random_state": 42}
     raise ValueError(f"Unknown baseline model ID: '{model_id}'")
 
 

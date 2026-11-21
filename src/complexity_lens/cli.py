@@ -18,7 +18,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from complexity_lens.complexity.engine import analyze_file
 from complexity_lens.dataset import generate_dataset_report
 from complexity_lens.evaluation import (
     BaselineError,
@@ -36,11 +35,9 @@ from complexity_lens.evaluation import (
     run_cross_validation,
     to_deterministic_json,
 )
-from complexity_lens.features.extractor import extract_features
 from complexity_lens.features.schema import FEATURE_NAMES
-from complexity_lens.ir.builder import build_ir_from_file
 from complexity_lens.ir.model import LoopIR, ProgramIR
-from complexity_lens.parsers import ClangParserError
+from complexity_lens.pipeline import analyze_source_pipeline
 from complexity_lens.split import (
     DEFAULT_SPLIT_SEED,
     FreezeGateError,
@@ -51,7 +48,6 @@ from complexity_lens.split import (
     validate_manifest,
     verify_frozen_manifest,
 )
-from complexity_lens.validation import ValidationError, validate_source
 
 
 def _summarize_ir(program: ProgramIR) -> dict[str, Any]:
@@ -79,6 +75,8 @@ def run_analyze(
     file_path: str | Path,
     as_json: bool = False,
     function_name: str | None = None,
+    ml_threshold: float = 0.55,
+    enable_ml: bool = True,
 ) -> int:
     """Execute analysis for a single C++ source file and print text or JSON output."""
     path = Path(file_path)
@@ -100,65 +98,121 @@ def run_analyze(
             print(f"Error: {err_msg}", file=sys.stderr)
         return 1
 
-    # 1. Validation phase
-    try:
-        validate_source(source)
-        validation_status = "VALID"
-        validation_error = None
-    except ValidationError as e:
-        validation_status = "FAILED"
-        validation_error = str(e)
-        if as_json:
-            print(
-                json.dumps(
-                    {
-                        "file": str(path),
-                        "input_validation_status": validation_status,
-                        "error": validation_error,
-                    },
-                    indent=2,
+    # Execute authoritative boundary analysis pipeline
+    pipeline_res = analyze_source_pipeline(
+        source=source,
+        function_name=function_name,
+        filename=path.name,
+        ml_threshold=ml_threshold,
+        enable_ml=enable_ml,
+    )
+
+    # 1. Validation phase handling
+    validation_status = "VALID"
+    validation_error = None
+    if (
+        not pipeline_res.success
+        and pipeline_res.validation_error
+        and pipeline_res.program_ir is None
+    ):
+        if not pipeline_res.validation_error.startswith("Parser failure"):
+            validation_status = "FAILED"
+            validation_error = pipeline_res.validation_error
+            if as_json:
+                print(
+                    json.dumps(
+                        {
+                            "file": str(path),
+                            "input_validation_status": validation_status,
+                            "error": validation_error,
+                        },
+                        indent=2,
+                    )
                 )
-            )
-        else:
-            print(f"Input Validation: {validation_status} ({validation_error})")
-        return 1
+            else:
+                print(f"Input Validation: {validation_status} ({validation_error})")
+            return 1
 
     # 2. Parser phase & IR Summary
-    try:
-        program_ir = build_ir_from_file(path)
+    if pipeline_res.program_ir is not None:
         parser_status = "PARSED"
         parser_error = None
-        ir_summary = _summarize_ir(program_ir)
-    except ClangParserError as e:
+        ir_summary = _summarize_ir(pipeline_res.program_ir)
+    else:
         parser_status = "FAILED"
-        parser_error = str(e)
-        ir_summary = None
-    except Exception as e:
-        parser_status = "FAILED"
-        parser_error = f"IR builder error: {e}"
+        parser_error = pipeline_res.validation_error or "Unknown parser failure"
         ir_summary = None
 
     # 3. Feature Extraction
-    features_dict = None
-    if parser_status == "PARSED" and program_ir is not None:
-        try:
-            fv = extract_features(program_ir)
-            features_dict = fv.to_dict()
-        except Exception:
-            features_dict = None
+    features_dict = (
+        pipeline_res.feature_vector.to_dict()
+        if pipeline_res.feature_vector is not None
+        else None
+    )
 
     # 4. Static Complexity Result
-    try:
-        result = analyze_file(path, function_name=function_name)
-        result_dict = result.to_dict()
-    except Exception as e:
-        result_dict = {
-            "predicted_class": "UNKNOWN",
-            "exactness": "EXACT",
-            "evidence": [],
-            "reason_codes": ["PARSER_ERROR"],
-            "error": str(e),
+    if pipeline_res.static_result is not None:
+        result_dict = pipeline_res.static_result.to_dict()
+        static_result = {
+            "label": result_dict.get("taxonomy_label", "UNKNOWN"),
+            "taxonomy_label": result_dict.get("taxonomy_label", "UNKNOWN"),
+            "exactness": result_dict.get("exactness", "UNKNOWN"),
+            "reasons": result_dict.get("reason_codes", []),
+            "reason_codes": result_dict.get("reason_codes", []),
+            "evidence": result_dict.get("evidence", [])
+            or [
+                {"source_entity": eid, "description": f"Evidence node {eid}"}
+                for eid in result_dict.get("evidence_node_ids", [])
+            ],
+            "evidence_node_ids": result_dict.get("evidence_node_ids", []),
+            "complexity_class": result_dict.get("complexity_class", {}),
+            "explanation": result_dict.get("explanation", ""),
+            "rule_trace": result_dict.get("rule_trace", []),
         }
+    else:
+        static_result = {
+            "label": "UNKNOWN",
+            "taxonomy_label": "UNKNOWN",
+            "exactness": "EXACT",
+            "reasons": ["PARSER_ERROR"],
+            "reason_codes": ["PARSER_ERROR"],
+            "evidence": [],
+            "evidence_node_ids": [],
+            "complexity_class": {},
+            "explanation": "",
+            "rule_trace": [],
+        }
+
+    # 5. Machine Learning Prediction & Diagnostics
+    if pipeline_res.ml_prediction is not None:
+        ml_prediction = {
+            "predicted_label": pipeline_res.ml_prediction.predicted_label,
+            "probability": pipeline_res.ml_prediction.probability,
+            "probabilities": pipeline_res.ml_prediction.probabilities,
+            "uncalibrated_score": pipeline_res.ml_prediction.probability,
+            "score_label": "uncalibrated_probability",
+            "model_id": pipeline_res.ml_prediction.model_id,
+        }
+        ml_unavailable = False
+        ml_error = None
+    else:
+        ml_prediction = None
+        ml_unavailable = True
+        ml_error = pipeline_res.ml_error
+
+    # 6. Hybrid Fusion Gate Result
+    fusion_result = (
+        pipeline_res.fusion_result.to_dict()
+        if pipeline_res.fusion_result is not None
+        else None
+    )
+
+    # 7. Explanation Report
+    explanation = (
+        pipeline_res.explanation.to_dict()
+        if pipeline_res.explanation is not None
+        else None
+    )
 
     if as_json:
         out = {
@@ -167,22 +221,29 @@ def run_analyze(
             "parser_status": parser_status,
             "ir_summary": ir_summary,
             "features": features_dict,
-            "result": result_dict,
+            "static_result": static_result,
+            "result": static_result,  # Backward compatibility
+            "ml_prediction": ml_prediction,
+            "ml_unavailable": ml_unavailable,
+            "ml_error": ml_error,
+            "fusion_result": fusion_result,
+            "explanation": explanation,
         }
         if validation_error:
             out["validation_error"] = validation_error
         if parser_error:
             out["parser_error"] = parser_error
-        print(json.dumps(out, indent=2))
+        # Serialize null for None and forbid NaN/Infinity escaping
+        print(json.dumps(out, indent=2, allow_nan=False))
         return 0
 
     # Text output format
     print("=" * 80)
-    print(f"ComplexityLens Static Analysis: {path.name}")
+    print(f"ComplexityLens Analysis Report: {path.name}")
     print("=" * 80)
     print(f"File Path            : {path}")
-    print(f"Input Validation     : {validation_status}")
-    print(f"Parser Status        : {parser_status}")
+    print(f"Input Validation: {validation_status}")
+    print(f"Parser Status:    {parser_status}")
     if parser_error:
         print(f"Parser Error         : {parser_error}")
 
@@ -194,28 +255,59 @@ def run_analyze(
         print(f"  Analysis Complete  : {ir_summary['analysis_complete']}")
 
     if features_dict:
-        print("\n[Features (26 Total)]")
+        print("\n[Structural Features (26 in schema order)]")
         for fn in FEATURE_NAMES:
             val = features_dict.get(fn, "N/A")
             print(f"  {fn:<30}: {val}")
 
     print("\n[Complexity Engine Result]")
-    print(f"  Predicted Class    : {result_dict.get('predicted_class')}")
-    print(f"  Exactness          : {result_dict.get('exactness')}")
-    rcs = result_dict.get("reason_codes", [])
-    print(f"  Reason Codes       : {', '.join(rcs) if rcs else 'None'}")
+    print(f"  Complexity Label     : {static_result.get('label')}")
+    print(f"  Predicted Class      : {static_result.get('label')}")
+    print(f"  Exactness            : {static_result.get('exactness')}")
+    rcs = static_result.get("reasons", [])
+    print(f"  Reason Codes         : {', '.join(rcs) if rcs else 'None'}")
 
-    evs = result_dict.get("evidence", [])
+    evs = static_result.get("evidence", [])
     print(f"  Evidence Items ({len(evs)}):")
     for ev in evs:
         print(f"    - [{ev.get('source_entity')}] {ev.get('description')}")
 
-    trace = result_dict.get("rule_trace", [])
+    trace = static_result.get("rule_trace", [])
     if trace:
         print(f"\n[Rule Trace ({len(trace)} Steps)]")
         for st in trace:
             applied = "APPLIED" if st.get("applied") else "SKIPPED"
             print(f"  - [{applied}] {st.get('rule_id')}: {st.get('explanation')}")
+
+    print("\n[Machine Learning Estimate]")
+    if ml_prediction:
+        print(f"  Model ID             : {ml_prediction.get('model_id')}")
+        print(f"  ML Predicted Label   : {ml_prediction.get('predicted_label')}")
+        score_val = ml_prediction.get("probability", 0.0)
+        print(f"  Uncalibrated Score   : {score_val:.4f} (uncalibrated probability)")
+        probs_dict = ml_prediction.get("probabilities", {})
+        sorted_probs = sorted(probs_dict.items(), key=lambda x: x[1], reverse=True)[:3]
+        print(f"  Top Classes          : {', '.join(f'{k}: {v:.3f}' for k, v in sorted_probs)}")
+    else:
+        print(f"  ML Status            : UNAVAILABLE ({ml_error or 'No model artifact loaded'})")
+
+    print("\n[Hybrid Fusion Decision]")
+    if fusion_result:
+        print(f"  Final Complexity     : {fusion_result.get('primary_label')}")
+        print(f"  Decision Source      : {fusion_result.get('source')}")
+        print(f"  Verification Status  : {fusion_result.get('verification_status')}")
+        print(f"  Decision Reason      : {fusion_result.get('decision_reason')}")
+        if fusion_result.get("rejection_category"):
+            print(f"  Rejection Category   : {fusion_result.get('rejection_category')}")
+        print(f"  Rationale            : {fusion_result.get('rationale')}")
+    else:
+        print("  Fusion Result        : NOT_AVAILABLE")
+
+    if explanation:
+        summary_text = explanation.get("summary")
+        if summary_text:
+            print("\n[Evidence Explanation]")
+            print(f"  {summary_text}")
 
     print("=" * 80)
     return 0
@@ -235,7 +327,7 @@ def run_dataset_report(
             print(f"Error: {err_msg}", file=sys.stderr)
         return 1
 
-    report = generate_dataset_report(dataset_root=root, check_parsing=True)
+    report = generate_dataset_report(dataset_root=root, check_parser=True)
 
     if as_json:
         print(json.dumps(report, indent=2))
@@ -245,16 +337,24 @@ def run_dataset_report(
     print("=" * 80)
     print(f"ComplexityLens Dataset Validation Report: {root}")
     print("=" * 80)
-    print(f"Total Programs Listed   : {report['total_programs']}")
-    print(f"Total Unique Families   : {report['unique_families']}")
+    total_records = report.get("total_records", report.get("total_programs", 0))
+    total_families = report.get("total_families", report.get("unique_families", 0))
+    print(f"Total Records:  {total_records}")
+    print(f"Total Families: {total_families}")
 
     print("\n[Ground-Truth Label Distribution]")
-    for label, count in sorted(report["label_distribution"].items()):
+    label_counts = report.get("counts_by_label", report.get("label_distribution", {}))
+    for label, count in sorted(label_counts.items()):
         print(f"  {label:<10}: {count}")
 
-    print("\n[Tag Distribution]")
-    for tag, count in sorted(report["tag_distribution"].items()):
-        print(f"  {tag:<10}: {count}")
+    if "counts_by_family" in report:
+        print("\n[Family Program Counts]")
+        for fam, count in sorted(report["counts_by_family"].items()):
+            print(f"  {fam:<24}: {count}")
+    elif "tag_distribution" in report:
+        print("\n[Tag Distribution]")
+        for tag, count in sorted(report["tag_distribution"].items()):
+            print(f"  {tag:<10}: {count}")
 
     print("\n[Origin Distribution]")
     if report.get("counts_by_origin"):
@@ -262,27 +362,27 @@ def run_dataset_report(
             print(f"  {orig:<14}: {count}")
 
     print("\n[UNKNOWN Counts and Reasons Breakdown]")
-    if report["unknown_reasons_breakdown"]:
+    if report.get("unknown_reasons_breakdown"):
         for reason, count in sorted(report["unknown_reasons_breakdown"].items()):
             print(f"  {reason:<26}: {count}")
     else:
         print("  None")
 
     print("\n[Integrity & Duplicate Checks]")
-    dup_ids = report["duplicate_program_ids"]
-    dup_hashes = report["duplicate_source_hashes"]
+    dup_ids = report.get("duplicate_program_ids", [])
+    dup_hashes = report.get("duplicate_source_hashes", [])
     print(f"  Duplicate Program IDs : {len(dup_ids)}" + (f" ({dup_ids})" if dup_ids else ""))
     print(
         f"  Duplicate Hashes      : {len(dup_hashes)}" + (f" ({dup_hashes})" if dup_hashes else "")
     )
 
-    schema_failures = report["metadata_schema_failures"]
+    schema_failures = report.get("metadata_schema_failures", [])
     print(f"  Metadata/Schema Errors: {len(schema_failures)}")
     for sf in schema_failures:
         print(f"    - {sf}")
 
     print("\n[Parser-Validity Status]")
-    parser_info = report["parser_validity"]
+    parser_info = report.get("parser_validity", {})
     status = parser_info.get("status", "UNKNOWN")
     print(f"  Status        : {status}")
     if status == "PARSER_UNAVAILABLE":
@@ -601,6 +701,146 @@ def run_evaluate_cv(
     return 0
 
 
+def run_evaluate_candidates(
+    out_dir: str | Path = "artifacts/models",
+    as_json: bool = False,
+) -> int:
+    """Execute Day 11 candidate model selection, determinism check, refit, and persistence."""
+    try:
+        from complexity_lens.evaluation.candidates import run_day11_pipeline
+
+        result = run_day11_pipeline(output_dir=out_dir)
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "ERROR"}, indent=2))
+        else:
+            print(f"Error during candidate evaluation: {e}", file=sys.stderr)
+        return 1
+
+    if as_json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    rf_w = result["random_forest"]["winner"]
+    xgb_w = result["xgboost"]["winner"]
+    print("=== ComplexityLens Day 11 Candidate Model Selection ===")
+    print(f"Random Forest Selected: {rf_w['config_id']} -> {rf_w['hyperparameters']}")
+    print(
+        f"  Macro-F1 ({result['random_forest']['winning_score_label']}): "
+        f"{rf_w['pooled_oof_macro_f1']:.4f}"
+    )
+    print(f"  Accuracy: {rf_w['pooled_oof_accuracy']:.4f}")
+    print(f"XGBoost Selected: {xgb_w['config_id']} -> {xgb_w['hyperparameters']}")
+    print(
+        f"  Macro-F1 ({result['xgboost']['winning_score_label']}): "
+        f"{xgb_w['pooled_oof_macro_f1']:.4f}"
+    )
+    print(f"  Accuracy: {xgb_w['pooled_oof_accuracy']:.4f}")
+    print(f"Artifacts persisted to: {out_dir}")
+    return 0
+
+
+def run_evaluate_day12(
+    manifest_path: str | Path = "data/splits/split_manifest_v1.0.frozen.json",
+    dataset_dir: str | Path = "datasets",
+    output_dir: str | Path = "artifacts/results",
+    as_json: bool = False,
+) -> int:
+    """Execute Day 12 rigorous evaluation: static, ML, abstention, calibration, bootstrap."""
+    try:
+        from complexity_lens.evaluation.rigorous import run_rigorous_evaluation
+
+        result = run_rigorous_evaluation(
+            manifest_path=manifest_path,
+            dataset_dir=dataset_dir,
+            output_dir=output_dir,
+        )
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "ERROR"}, indent=2))
+        else:
+            print(f"Error during Day 12 evaluation: {e}", file=sys.stderr)
+        return 1
+
+    if as_json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    print("=== ComplexityLens Day 12 Rigorous Evaluation Report ===")
+    print("Development Set       : 159 programs across 53 families")
+    print("Test Set Protection   : TestPartitionAccessError (guarded)")
+    print()
+    print("[Model Comparison]")
+    static_res = result["static_only_engine"]
+    static_cov = static_res["abstention"]["coverage"]
+    print(
+        f"  Static-Only Engine  : Acc {static_res['accuracy']:.4f} | "
+        f"Macro-F1 {static_res['macro_f1']:.4f} | Coverage: {static_cov:.4f}"
+    )
+    print(f"    Disclosure        : {static_res['disclosure']}")
+
+    for m_id, m_data in sorted(result["ml_candidates"].items()):
+        b_acc = result["family_cluster_bootstrap"][m_id]["accuracy"]
+        b_f1 = result["family_cluster_bootstrap"][m_id]["macro_f1"]
+        acc_ci = f"[{b_acc['ci_lower']:.4f}, {b_acc['ci_upper']:.4f}]"
+        f1_ci = f"[{b_f1['ci_lower']:.4f}, {b_f1['ci_upper']:.4f}]"
+        print(
+            f"  ML {m_id:<18}: Acc {m_data['accuracy']:.4f} (95% CI {acc_ci}) | "
+            f"Macro-F1 {m_data['macro_f1']:.4f} (95% CI {f1_ci})"
+        )
+        if "ece" in m_data["calibration"] and m_data["calibration"]["ece"] is not None:
+            cal = m_data["calibration"]
+            print(
+                f"    Calibration       : ECE {cal['ece']:.4f} | "
+                f"Brier {cal['brier_score']:.4f} | Status: {cal['status']}"
+            )
+
+    hyb = result["hybrid_system"]
+    hyb_sel = hyb["abstention"]["selective_accuracy"]
+    hyb_cov = hyb["abstention"]["coverage"]
+    print(
+        f"  Hybrid (Th=0.55)    : Acc {hyb['accuracy']:.4f} | Macro-F1 {hyb['macro_f1']:.4f} | "
+        f"Selective Acc: {hyb_sel:.4f} | Coverage: {hyb_cov:.4f}"
+    )
+    print()
+    print(f"Disclaimer            : {result['small_gaps_disclaimer']}")
+    print(f"Results written to    : {output_dir}/day12_evaluation_results.json")
+    return 0
+
+
+def run_evaluate_day13(
+    manifest_path: str | Path = "data/splits/split_manifest_v1.0.frozen.json",
+    dataset_dir: str | Path = "datasets",
+    output_dir: str | Path = "artifacts/day13",
+    threshold: float = 0.55,
+    as_json: bool = False,
+) -> int:
+    """Execute Day 13 S1-S4 hybrid gate evaluation."""
+    try:
+        from complexity_lens.evaluation.day13_evaluation import run_day13_evaluation
+
+        result = run_day13_evaluation(
+            dataset_dir=str(dataset_dir),
+            manifest_path=str(manifest_path),
+            output_dir=str(output_dir),
+            threshold=threshold,
+        )
+    except Exception as e:
+        if as_json:
+            print(json.dumps({"error": str(e), "status": "ERROR"}, indent=2))
+        else:
+            print(f"Error during Day 13 evaluation: {e}", file=sys.stderr)
+        return 1
+
+    if as_json:
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+
+    print("=== ComplexityLens Day 13 S1-S4 Evaluation Complete ===")
+    print(f"Results written to: {output_dir}/day13_evaluation_results.json")
+    return 0
+
+
 def main(args: list[str] | None = None) -> int:
     """CLI entry point dispatching to appropriate command."""
     parser = argparse.ArgumentParser(
@@ -694,6 +934,80 @@ def main(args: list[str] | None = None) -> int:
         help="Output machine-readable JSON to stdout",
     )
 
+    # evaluate candidates
+    candidates_parser = evaluate_subparsers.add_parser(
+        "candidates", help="Run Day 11 Random Forest and XGBoost candidate evaluation"
+    )
+    candidates_parser.add_argument(
+        "--out-dir",
+        default="artifacts/models",
+        help="Directory to persist model artifacts and metadata",
+    )
+    candidates_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON to stdout",
+    )
+
+    # evaluate day12 / rigorous
+    day12_parser = evaluate_subparsers.add_parser(
+        "day12",
+        aliases=["rigorous"],
+        help="Run Day 12 rigorous evaluation (static, ML, abstention, calibration, bootstrap)",
+    )
+    day12_parser.add_argument(
+        "--manifest",
+        default="data/splits/split_manifest_v1.0.frozen.json",
+        help="Path to frozen split manifest JSON",
+    )
+    day12_parser.add_argument(
+        "--dataset-dir",
+        default="datasets",
+        help="Path to dataset root directory",
+    )
+    day12_parser.add_argument(
+        "--out-dir",
+        default="artifacts/results",
+        help="Directory to save evaluation JSON results",
+    )
+    day12_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON to stdout",
+    )
+
+    # evaluate day13 / s1-s4
+    day13_parser = evaluate_subparsers.add_parser(
+        "day13",
+        help="Run Day 13 S1-S4 hybrid gate evaluation and bootstrap",
+    )
+    day13_parser.add_argument(
+        "--manifest",
+        default="data/splits/split_manifest_v1.0.frozen.json",
+        help="Path to frozen split manifest JSON",
+    )
+    day13_parser.add_argument(
+        "--dataset-dir",
+        default="datasets",
+        help="Path to dataset root directory",
+    )
+    day13_parser.add_argument(
+        "--out-dir",
+        default="artifacts/day13",
+        help="Directory to save Day 13 evaluation JSON results",
+    )
+    day13_parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.55,
+        help="Provisional ML decision threshold (default: 0.55)",
+    )
+    day13_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON to stdout",
+    )
+
     parsed_args = parser.parse_args(args)
 
     if parsed_args.command == "analyze":
@@ -748,6 +1062,26 @@ def main(args: list[str] | None = None) -> int:
                 manifest_path=parsed_args.manifest,
                 dataset_dir=parsed_args.dataset_dir,
                 out_path=parsed_args.out,
+                as_json=parsed_args.json,
+            )
+        elif parsed_args.evaluate_command == "candidates":
+            return run_evaluate_candidates(
+                out_dir=parsed_args.out_dir,
+                as_json=parsed_args.json,
+            )
+        elif parsed_args.evaluate_command in ("day12", "rigorous"):
+            return run_evaluate_day12(
+                manifest_path=parsed_args.manifest,
+                dataset_dir=parsed_args.dataset_dir,
+                output_dir=parsed_args.out_dir,
+                as_json=parsed_args.json,
+            )
+        elif parsed_args.evaluate_command == "day13":
+            return run_evaluate_day13(
+                manifest_path=parsed_args.manifest,
+                dataset_dir=parsed_args.dataset_dir,
+                output_dir=parsed_args.out_dir,
+                threshold=parsed_args.threshold,
                 as_json=parsed_args.json,
             )
         else:
